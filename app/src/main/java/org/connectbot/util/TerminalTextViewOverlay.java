@@ -62,6 +62,9 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 
 		setTextColor(Color.TRANSPARENT);
 		setTypeface(Typeface.MONOSPACE);
+		setIncludeFontPadding(false);
+		setPadding(0, 0, 0, 0);
+		setHorizontallyScrolling(true);
 		setTextIsSelectable(true);
 		setCustomSelectionActionModeCallback(new TextSelectionActionModeCallback());
 	}
@@ -95,6 +98,11 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 		oldScrollY = vb.getWindowBase() * getLineHeight();
 
 		setText(buffer);
+
+		// Try to apply the scroll immediately so that hit-testing is correct even before the next
+		// draw pass (e.g., during fast IME hide/show interactions). We also keep oldScrollY so
+		// onPreDraw can re-apply once layout is ready.
+		super.scrollTo(0, oldScrollY);
 	}
 
 	/**
@@ -116,7 +124,9 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 			newLines.append('\n');
 		}
 
-		oldScrollY = (vb.getWindowBase() + numNewRows) * getLineHeight();
+		// windowBase already reflects the new buffer position after the scrollback grew; do not
+		// add numNewRows again or we will over-scroll and desync from the terminal.
+		oldScrollY = vb.getWindowBase() * getLineHeight();
 		oldBufferHeight = numRows;
 
 		append(newLines);
@@ -141,7 +151,26 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 		}
 	}
 
+	private void updateCurrentSelection(int selStart, int selEnd) {
+		CharSequence text = getText();
+		if (text == null || selStart < 0 || selEnd < 0) {
+			currentSelection = "";
+			return;
+		}
+
+		int start = Math.min(selStart, selEnd);
+		int end = Math.max(selStart, selEnd);
+		if (start >= end || start >= text.length()) {
+			currentSelection = "";
+			return;
+		}
+
+		end = Math.min(end, text.length());
+		currentSelection = text.subSequence(start, end).toString();
+	}
+
 	public void copyCurrentSelectionToClipboard() {
+		updateCurrentSelection(getSelectionStart(), getSelectionEnd());
 		if (currentSelection.length() != 0) {
 			clipboard.setText(currentSelection);
 		}
@@ -158,9 +187,7 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 
 	@Override
 	protected void onSelectionChanged(int selStart, int selEnd) {
-		if (selStart >= 0 && selEnd >= 0 && selStart <= selEnd) {
-			currentSelection = getText().toString().substring(selStart, selEnd);
-		}
+		updateCurrentSelection(selStart, selEnd);
 		super.onSelectionChanged(selStart, selEnd);
 	}
 
@@ -269,7 +296,7 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 					selectionEnd = tempStart;
 				}
 
-				currentSelection = getText().toString().substring(selectionStart, selectionEnd);
+				updateCurrentSelection(selectionStart, selectionEnd);
 			}
 		} else if (event.getAction() == MotionEvent.ACTION_DOWN) {
 			terminalView.viewPager.setPagingEnabled(false);

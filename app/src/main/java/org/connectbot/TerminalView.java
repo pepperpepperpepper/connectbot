@@ -62,6 +62,7 @@ import android.view.inputmethod.InputConnection;
 import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
+import androidx.core.widget.TextViewCompat;
 import de.mud.terminal.VDUBuffer;
 import de.mud.terminal.vt320;
 
@@ -379,19 +380,36 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 		((Activity) context).runOnUiThread(new Runnable() {
 			@Override
 			public void run() {
-				if (terminalTextViewOverlay != null) {
-					// Use the bridge text size in pixels to have exactly the same text size.
-					terminalTextViewOverlay.setTextSize(TypedValue.COMPLEX_UNIT_PX, bridge.getTextSizePx());
-
-					// For the TextView to line up with the bitmap text, lineHeight must be equal to
-					// the bridge's charHeight. See TextView.getLineHeight(), which has been reversed to
-					// derive lineSpacingMultiplier.
-					float lineSpacingMultiplier = (float) bridge.charHeight / terminalTextViewOverlay.getPaint().getFontMetricsInt(null);
-					terminalTextViewOverlay.setLineSpacing(0.0f, lineSpacingMultiplier);
+					if (terminalTextViewOverlay != null) {
+						// Use the bridge text size in pixels to have exactly the same text size.
+						terminalTextViewOverlay.setTextSize(TypedValue.COMPLEX_UNIT_PX, bridge.getTextSizePx());
+						TextViewCompat.setLineHeight(terminalTextViewOverlay, bridge.charHeight);
+						terminalTextViewOverlay.getPaint().setFakeBoldText(true);
+						// Match the overlay's character cell width to the terminal grid. Even with the same
+						// font + size, TextView's glyph advances can be fractional while the terminal grid
+						// uses an integer charWidth; the per-cell delta accumulates and breaks hit-testing.
+						terminalTextViewOverlay.setTextScaleX(1.0f);
+						final String sample = "XXXXXXXXXXXXXXXXXXXX"; // average over many glyphs for stability
+						float measuredCharWidth = terminalTextViewOverlay.getPaint().measureText(sample) / sample.length();
+						if (measuredCharWidth > 0f) {
+							float scaleX = 1.0f;
+							for (int i = 0; i < 3; i++) {
+								float factor = bridge.charWidth / measuredCharWidth;
+								scaleX *= factor;
+								terminalTextViewOverlay.setTextScaleX(scaleX);
+								measuredCharWidth = terminalTextViewOverlay.getPaint().measureText(sample) / sample.length();
+								if (Math.abs(measuredCharWidth - bridge.charWidth) < 0.01f) {
+									break;
+								}
+								if (measuredCharWidth <= 0f) {
+									break;
+								}
+							}
+						}
+					}
 				}
-			}
-		});
-	}
+			});
+		}
 
 	private void scaleCursors() {
 		// Create a scale matrix to scale our 1x1 representation of the cursor

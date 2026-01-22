@@ -25,11 +25,22 @@ coveralls {
 
 appVersioning {
     tagFilter.set("v[0-9].*")
+    val forcedVersionCodeOverride = project.findProperty("forceVersionCode")?.toString()?.toIntOrNull()
+    val forcedVersionNameOverride = project.findProperty("forceVersionName")?.toString()?.trim()
+
     overrideVersionCode { gitTag, _, _ ->
+        if (forcedVersionCodeOverride != null) {
+            return@overrideVersionCode forcedVersionCodeOverride
+        }
+
         val semVer = gitTag.toSemVer()
         semVer.major * 10000000 + semVer.minor * 100000 + semVer.patch * 1000 + gitTag.commitsSinceLatestTag
     }
     overrideVersionName { gitTag, _, _ ->
+        if (!forcedVersionNameOverride.isNullOrBlank()) {
+            return@overrideVersionName forcedVersionNameOverride
+        }
+
         if (gitTag.commitsSinceLatestTag != 0) {
             "git-${gitTag.rawTagName}-${gitTag.commitsSinceLatestTag}-g${gitTag.commitHash}"
         } else {
