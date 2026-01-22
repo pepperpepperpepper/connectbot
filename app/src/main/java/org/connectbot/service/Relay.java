@@ -130,9 +130,12 @@ public class Relay implements Runnable {
 
 					offset = charBuffer.position();
 
-					AndroidCharacter.getEastAsianWidths(charArray, 0, offset, wideAttribute);
-					buffer.putString(charArray, wideAttribute, 0, charBuffer.position());
-					bridge.propagateConsoleText(charArray, charBuffer.position());
+					final int charCount = offset;
+					AndroidCharacter.getEastAsianWidths(charArray, 0, charCount, wideAttribute);
+					synchronized (buffer) {
+						buffer.putString(charArray, wideAttribute, 0, charCount);
+					}
+					bridge.propagateConsoleText(charArray, charCount);
 					charBuffer.clear();
 					bridge.redraw();
 				}

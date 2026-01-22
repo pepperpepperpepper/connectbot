@@ -337,6 +337,7 @@ public class VDUBuffer {
     long abuf[][] = null;
     int offset = 0;
     int oldBase = screenBase;
+    final boolean wasAtBottom = (windowBase == screenBase);
 
     int newScreenBase = screenBase;
     int newWindowBase = windowBase;
@@ -380,12 +381,23 @@ public class VDUBuffer {
             scrollMarker += offset;
             newBufSize = maxBufSize;
             newScreenBase = maxBufSize - height - 1;
-            newWindowBase = screenBase;
+            if (wasAtBottom) {
+              // Keep following output if the user was already at the bottom.
+              newWindowBase = newScreenBase;
+            } else {
+              // Preserve the user's scrollback position when the buffer is forced to drop lines.
+              newWindowBase = windowBase - offset;
+              if (newWindowBase < 0) newWindowBase = 0;
+            }
           } else {
             scrollMarker += n;
             newScreenBase += n;
-            newWindowBase += n;
             newBufSize += n;
+            // If the user is scrolled back (windowBase != screenBase), keep them anchored to the same
+            // content while output continues to arrive.
+            if (wasAtBottom) {
+              newWindowBase += n;
+            }
           }
 
           cbuf = new char[newBufSize][width];
@@ -394,6 +406,12 @@ public class VDUBuffer {
           offset = n;
           cbuf = charArray;
           abuf = charAttributes;
+          // When we must drop lines from the top, adjust the windowBase to keep the same content
+          // visible if the user is in scrollback.
+          if (!wasAtBottom) {
+            newWindowBase = windowBase - offset;
+            if (newWindowBase < 0) newWindowBase = 0;
+          }
         }
         // copy anything from the top of the buffer (+offset) to the new top
         // up to the screenBase.

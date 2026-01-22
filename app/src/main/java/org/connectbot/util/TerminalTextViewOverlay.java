@@ -27,6 +27,8 @@ import android.graphics.Typeface;
 import android.os.Build;
 import androidx.core.view.MotionEventCompat;
 import android.text.ClipboardManager;
+import android.text.Selection;
+import android.text.Spannable;
 import android.view.ActionMode;
 import android.view.InputDevice;
 import android.view.KeyEvent;
@@ -50,6 +52,7 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	private String currentSelection = "";
 	private ActionMode selectionActionMode;
 	private ClipboardManager clipboard;
+	private boolean isTouchDown = false;
 
 	private int oldBufferHeight = 0;
 	private int oldScrollY = -1;
@@ -70,32 +73,35 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	}
 
 	public void refreshTextFromBuffer() {
-		VDUBuffer vb = terminalView.bridge.getVDUBuffer();
-		int numRows = vb.getBufferSize();
-		int numCols = vb.getColumns();
-		oldBufferHeight = numRows;
-
 		StringBuilder buffer = new StringBuilder();
-		int previousTotalLength = 0;
+		final int windowBase;
+		synchronized (terminalView.bridge.buffer) {
+			VDUBuffer vb = terminalView.bridge.getVDUBuffer();
+			int numRows = vb.getBufferSize();
+			int numCols = vb.getColumns();
+			oldBufferHeight = numRows;
+			windowBase = vb.getWindowBase();
 
-		for (int r = 0; r < numRows && vb.charArray[r] != null; r++) {
-			for (int c = 0; c < numCols; c++) {
-				buffer.append(vb.charArray[r][c]);
+			int previousTotalLength = 0;
+			for (int r = 0; r < numRows && vb.charArray[r] != null; r++) {
+				for (int c = 0; c < numCols; c++) {
+					buffer.append(vb.charArray[r][c]);
+				}
+
+				// Truncate all the new whitespace without removing the old data.
+				while (buffer.length() > previousTotalLength &&
+						Character.isWhitespace(buffer.charAt(buffer.length() - 1))) {
+					buffer.setLength(buffer.length() - 1);
+				}
+
+				// Make sure each line ends with a carriage return and then remember the buffer
+				// at that length.
+				buffer.append('\n');
+				previousTotalLength = buffer.length();
 			}
-
-			// Truncate all the new whitespace without removing the old data.
-			while (buffer.length() > previousTotalLength &&
-					Character.isWhitespace(buffer.charAt(buffer.length() - 1))) {
-				buffer.setLength(buffer.length() - 1);
-			}
-
-			// Make sure each line ends with a carriage return and then remember the buffer
-			// at that length.
-			buffer.append('\n');
-			previousTotalLength = buffer.length();
 		}
 
-		oldScrollY = vb.getWindowBase() * getLineHeight();
+		oldScrollY = windowBase * getLineHeight();
 
 		setText(buffer);
 
@@ -111,11 +117,30 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	 * rest of the buffer.
 	 */
 	public void onBufferChanged() {
-		VDUBuffer vb = terminalView.bridge.getVDUBuffer();
-		int numRows = vb.getBufferSize();
+		// While the user is holding their finger down waiting for a long-press selection to begin,
+		// avoid mutating the overlay (append/scroll). This can cancel long-press selection under
+		// continuous output.
+		if (isTouchDown && selectionActionMode == null) {
+			return;
+		}
+
+		final int numRows;
+		final int windowBase;
+		synchronized (terminalView.bridge.buffer) {
+			VDUBuffer vb = terminalView.bridge.getVDUBuffer();
+			numRows = vb.getBufferSize();
+			windowBase = vb.getWindowBase();
+		}
+
 		int numNewRows = numRows - oldBufferHeight;
 
+		// Always keep the overlay scroll position aligned to the current windowBase, even when the
+		// scrollback is saturated and the buffer height doesn't grow.
+		oldScrollY = windowBase * getLineHeight();
+		oldBufferHeight = numRows;
+
 		if (numNewRows <= 0) {
+			super.scrollTo(0, oldScrollY);
 			return;
 		}
 
@@ -124,12 +149,20 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 			newLines.append('\n');
 		}
 
-		// windowBase already reflects the new buffer position after the scrollback grew; do not
-		// add numNewRows again or we will over-scroll and desync from the terminal.
-		oldScrollY = vb.getWindowBase() * getLineHeight();
-		oldBufferHeight = numRows;
+		// Appending to the TextView while selection handles are active can cause selection to be
+		// cleared by framework internals. Preserve any active selection explicitly.
+		final int selStart = getSelectionStart();
+		final int selEnd = getSelectionEnd();
+		final boolean hadSelection = selStart >= 0 && selEnd >= 0 && selStart != selEnd;
 
 		append(newLines);
+		if (hadSelection) {
+			CharSequence text = getText();
+			if (text instanceof Spannable) {
+				Selection.setSelection((Spannable) text, selStart, selEnd);
+			}
+		}
+		super.scrollTo(0, oldScrollY);
 	}
 
 	@Override
@@ -137,7 +170,10 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 		boolean superResult = super.onPreDraw();
 
 		if (oldScrollY >= 0) {
-			scrollTo(0, oldScrollY);
+			// Apply pending scroll without feeding back into buffer.windowBase. The buffer is the source
+			// of truth here; this is only to align the overlay's visible (invisible) scroll position
+			// once layout is ready.
+			super.scrollTo(0, oldScrollY);
 			oldScrollY = -1;
 		}
 
@@ -193,21 +229,25 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 
 	@Override
 	public void scrollTo(int x, int y) {
-		int lineMultiple = (y * 2 + 1) / (getLineHeight() * 2);
-
-		TerminalBridge bridge = terminalView.bridge;
-		bridge.buffer.setWindowBase(lineMultiple);
-
+		// Keep X pinned at 0. The terminal buffer is the source of truth for scrollback
+		// (windowBase); avoid feeding TextView-internal scrolling back into the buffer since it can
+		// race with streaming output and break selection/copy hit-testing.
 		super.scrollTo(0, y);
 	}
 
 	@Override
 	public boolean onTouchEvent(MotionEvent event) {
 		if (event.getAction() == MotionEvent.ACTION_DOWN) {
+			isTouchDown = true;
 			// Selection may be beginning. Sync the TextView with the buffer.
 			refreshTextFromBuffer();
-		} else if (event.getAction() == MotionEvent.ACTION_UP) {
-			super.scrollTo(0, terminalView.bridge.buffer.getWindowBase() * getLineHeight());
+		} else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
+			isTouchDown = false;
+			final int windowBase;
+			synchronized (terminalView.bridge.buffer) {
+				windowBase = terminalView.bridge.buffer.getWindowBase();
+			}
+			super.scrollTo(0, windowBase * getLineHeight());
 		}
 
 		// Mouse input is treated differently:

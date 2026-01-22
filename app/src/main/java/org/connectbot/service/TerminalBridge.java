@@ -331,7 +331,9 @@ public class TerminalBridge implements VDUDisplay {
 
 				localOutput.add(s);
 
-				((vt320) buffer).putString(s);
+				synchronized (buffer) {
+					((vt320) buffer).putString(s);
+				}
 
 				// For accessibility
 				final char[] charArray = s.toCharArray();
@@ -396,19 +398,21 @@ public class TerminalBridge implements VDUDisplay {
 	public void onConnected() {
 		disconnected = false;
 
-		((vt320) buffer).reset();
+		synchronized (buffer) {
+			((vt320) buffer).reset();
+
+			// previously tried vt100 and xterm for emulation modes
+			// "screen" works the best for color and escape codes
+			((vt320) buffer).setAnswerBack(emulation);
+
+			if (HostDatabase.DELKEY_BACKSPACE.equals(host.getDelKey()))
+				((vt320) buffer).setBackspace(vt320.DELETE_IS_BACKSPACE);
+			else
+				((vt320) buffer).setBackspace(vt320.DELETE_IS_DEL);
+		}
 
 		// We no longer need our local output.
 		localOutput.clear();
-
-		// previously tried vt100 and xterm for emulation modes
-		// "screen" works the best for color and escape codes
-		((vt320) buffer).setAnswerBack(emulation);
-
-		if (HostDatabase.DELKEY_BACKSPACE.equals(host.getDelKey()))
-			((vt320) buffer).setBackspace(vt320.DELETE_IS_BACKSPACE);
-		else
-			((vt320) buffer).setBackspace(vt320.DELETE_IS_DEL);
 
 		if (isSessionOpen()) {
 			// create thread to relay incoming connection data to buffer
@@ -472,7 +476,9 @@ public class TerminalBridge implements VDUDisplay {
 		} else {
 			{
 				final String line = manager.res.getString(R.string.alert_disconnect_msg);
-				((vt320) buffer).putString("\r\n" + line + "\r\n");
+				synchronized (buffer) {
+					((vt320) buffer).putString("\r\n" + line + "\r\n");
+				}
 			}
 			if (host.getStayConnected()) {
 				manager.requestReconnect(this);
@@ -664,10 +670,12 @@ public class TerminalBridge implements VDUDisplay {
 		// redraw local output if we don't have a sesson to receive our resize request
 		if (transport == null) {
 			synchronized (localOutput) {
-				((vt320) buffer).reset();
-
-				for (String line : localOutput)
-					((vt320) buffer).putString(line);
+				synchronized (buffer) {
+					((vt320) buffer).reset();
+					for (String line : localOutput) {
+						((vt320) buffer).putString(line);
+					}
+				}
 			}
 		}
 
@@ -1076,8 +1084,10 @@ public class TerminalBridge implements VDUDisplay {
 	 */
 	public void resetScrollPosition() {
 		// if we're in scrollback, scroll to bottom of window on input
-		if (buffer.windowBase != buffer.screenBase)
-			buffer.setWindowBase(buffer.screenBase);
+		synchronized (buffer) {
+			if (buffer.windowBase != buffer.screenBase)
+				buffer.setWindowBase(buffer.screenBase);
+		}
 	}
 
 	/**

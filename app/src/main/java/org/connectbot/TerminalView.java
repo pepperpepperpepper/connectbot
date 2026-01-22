@@ -18,6 +18,7 @@
 package org.connectbot;
 
 import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -78,6 +79,14 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 	public final TerminalBridge bridge;
 
 	private final TerminalTextViewOverlay terminalTextViewOverlay;
+	private final AtomicBoolean overlayBufferChangeQueued = new AtomicBoolean(false);
+	private final Runnable overlayBufferChangeRunnable = new Runnable() {
+		@Override
+		public void run() {
+			overlayBufferChangeQueued.set(false);
+			terminalTextViewOverlay.onBufferChanged();
+		}
+	};
 	public final TerminalViewPager viewPager;
 	private final GestureDetector gestureDetector;
 	private final SharedPreferences prefs;
@@ -253,8 +262,10 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 						}
 						return true;
 					} else if (moved != 0) {
-						int base = bridge.buffer.getWindowBase();
-						bridge.buffer.setWindowBase(base + moved);
+						synchronized (bridge.buffer) {
+							int base = bridge.buffer.getWindowBase();
+							bridge.buffer.setWindowBase(base + moved);
+						}
 						totalY = 0;
 						return false;
 					}
@@ -595,14 +606,9 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 			}
 		}
 
-		((Activity) context).runOnUiThread(new Runnable() {
-			@Override
-			public void run() {
-				if (terminalTextViewOverlay != null) {
-					terminalTextViewOverlay.onBufferChanged();
-				}
-			}
-		});
+		if (overlayBufferChangeQueued.compareAndSet(false, true)) {
+			post(overlayBufferChangeRunnable);
+		}
 	}
 
 	private class AccessibilityEventSender implements Runnable {

@@ -31,6 +31,8 @@ import android.view.View;
 
 import java.io.IOException;
 import java.util.Collection;
+import java.util.Locale;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static androidx.test.espresso.Espresso.onView;
 import static androidx.test.espresso.action.ViewActions.click;
@@ -50,6 +52,7 @@ public class TerminalSelectionCopyTest {
 	private static final long KEYBOARD_DISMISSAL_DELAY_MILLIS = 1000L;
 	private static final long TERMINAL_UI_SETTLE_DELAY_MILLIS = 500L;
 	private static final String STRESS_SCROLLBACK_LINES = "1000";
+	private static final long STREAMING_OUTPUT_DELAY_MILLIS = 25L;
 
 	@Rule
 	public final ActivityTestRule<HostListActivity> activityRule = new ActivityTestRule<>(
@@ -60,6 +63,7 @@ public class TerminalSelectionCopyTest {
 		Context testContext = ApplicationProvider.getApplicationContext();
 		grantPostNotificationsPermissionIfNeeded(testContext);
 		enableImeOnHardKeyboardIfPossible();
+		wakeAndUnlockDeviceIfPossible();
 		HostDatabase.resetInMemoryInstance(testContext);
 
 		activityRule.launchActivity(new Intent());
@@ -325,11 +329,137 @@ public class TerminalSelectionCopyTest {
 		}
 	}
 
+	@Test
+	public void selectionCopyWorksWhileOutputIsStreamingAndUserIsScrolledUp() throws InterruptedException {
+		Context testContext = ApplicationProvider.getApplicationContext();
+
+		SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
+		boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);
+		String wasScrollback = settings.getString(PreferenceConstants.SCROLLBACK, "140");
+
+		try {
+				// Keep enough scrollback so the "older" numbered lines stay present while output streams.
+				settings.edit()
+						.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+						.putString(PreferenceConstants.SCROLLBACK, "2000")
+						.commit();
+
+			startNewLocalConnectionWithoutIntents("Local");
+			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
+			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+
+			final String token5 = "NUM00005";
+			final String token45 = "NUM00045";
+
+			// Seed deterministic content: a monotonically increasing list of numbers. We'll scroll to
+			// older rows and attempt to copy them while new output continues to arrive.
+			StringBuilder seed = new StringBuilder();
+				// Keep this large enough that NUM00045/NUM00005 are always in scrollback (even on very
+				// tall screens / small fonts) so we exercise "scrolled up while output streams".
+				for (int i = 0; i < 1000; i++) {
+					seed.append("NUM").append(String.format(Locale.US, "%05d", i)).append("\r\n");
+				}
+			insertTerminalOutput(terminalView, "\r\n" + seed.toString());
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			BufferPosition token45Pos = waitForTokenPosition(terminalView, token45, 5000L);
+			final int rows = getTerminalRows(terminalView);
+			final int initialBase = Math.max(0, token45Pos.row - (rows / 2));
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					synchronized (terminalView.bridge.buffer) {
+						terminalView.bridge.buffer.setWindowBase(initialBase);
+					}
+				}
+			});
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			// Start continuous output in a background thread (closer to how Relay behaves in real
+			// sessions). We keep adding lines while repeatedly selecting/copying old numbers.
+			ClipboardManager clipboard = (ClipboardManager) testContext.getSystemService(Context.CLIPBOARD_SERVICE);
+
+			// Phase 1: keyboard visible.
+			ensureSoftKeyboardVisibility(consoleActivity, true);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			final AtomicBoolean stopVisible = new AtomicBoolean(false);
+			Thread streamerVisible = startBackgroundNumberStreamer(terminalView, stopVisible, 400);
+			for (int i = 0; i < 3; i++) {
+					BufferPosition token5Pos = waitForTokenPosition(terminalView, token5, 5000L);
+					BufferPosition token45PosNow = waitForTokenPosition(terminalView, token45, 5000L);
+
+					clipboard.setText("");
+					assertThat(selectTokenAndCopy(terminalView, clipboard, token45PosNow, ViewportAnchor.BOTTOM), equalTo(token45));
+					clipboard.setText("");
+					assertThat(selectTokenAndCopy(terminalView, clipboard, token5Pos, ViewportAnchor.TOP), equalTo(token5));
+
+				SystemClock.sleep(200L);
+			}
+			stopVisible.set(true);
+			streamerVisible.join(10_000L);
+
+			// Phase 2: keyboard hidden.
+			ensureSoftKeyboardVisibility(consoleActivity, false);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			final AtomicBoolean stopHidden = new AtomicBoolean(false);
+			Thread streamerHidden = startBackgroundNumberStreamer(terminalView, stopHidden, 400);
+			for (int i = 0; i < 3; i++) {
+					BufferPosition token5Pos = waitForTokenPosition(terminalView, token5, 5000L);
+					BufferPosition token45PosNow = waitForTokenPosition(terminalView, token45, 5000L);
+
+					clipboard.setText("");
+					assertThat(selectTokenAndCopy(terminalView, clipboard, token45PosNow, ViewportAnchor.BOTTOM), equalTo(token45));
+					clipboard.setText("");
+					assertThat(selectTokenAndCopy(terminalView, clipboard, token5Pos, ViewportAnchor.TOP), equalTo(token5));
+
+				SystemClock.sleep(200L);
+			}
+			stopHidden.set(true);
+			streamerHidden.join(10_000L);
+		} finally {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
+					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
+					.commit();
+		}
+	}
+
 	private enum ViewportAnchor { TOP, MIDDLE, BOTTOM }
 
-	private static String selectTokenAndCopy(TerminalView terminalView, ClipboardManager clipboard, BufferPosition tokenPos, ViewportAnchor anchor) {
-		final int rows = getTerminalRows(terminalView);
-		int targetBase;
+	private static Thread startBackgroundNumberStreamer(final TerminalView terminalView, final AtomicBoolean stop, final int count) {
+		Thread t = new Thread(new Runnable() {
+			@Override
+			public void run() {
+				for (int i = 0; i < count && !stop.get(); i++) {
+					String token = "STREAM" + String.format(Locale.US, "%05d", i);
+					String line = token + "\r\n";
+					appendTerminalOutputFromBackgroundThread(terminalView, line);
+					SystemClock.sleep(STREAMING_OUTPUT_DELAY_MILLIS);
+				}
+			}
+		});
+		t.setName("TestTerminalStreamer");
+		t.setDaemon(true);
+		t.start();
+		return t;
+	}
+
+	private static void appendTerminalOutputFromBackgroundThread(final TerminalView terminalView, final String output) {
+		// Intentionally *not* marshaled to the main thread so we exercise the same thread model as
+		// Relay (network thread mutating the vt320 buffer, UI thread reading for selection).
+		synchronized (terminalView.bridge.buffer) {
+			((de.mud.terminal.vt320) terminalView.bridge.buffer).putString(output);
+		}
+		char[] raw = output.toCharArray();
+		terminalView.bridge.propagateConsoleText(raw, raw.length);
+		terminalView.bridge.redraw();
+	}
+
+		private static String selectTokenAndCopy(TerminalView terminalView, ClipboardManager clipboard, BufferPosition tokenPos, ViewportAnchor anchor) {
+			final int rows = getTerminalRows(terminalView);
+			int targetBase;
 		switch (anchor) {
 		case TOP:
 			targetBase = tokenPos.row;
@@ -342,35 +472,83 @@ public class TerminalSelectionCopyTest {
 			break;
 		default:
 			targetBase = tokenPos.row;
+			}
+
+			final int base = Math.max(0, targetBase);
+			final int[] windowBaseAfterSet = new int[1];
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					synchronized (terminalView.bridge.buffer) {
+						terminalView.bridge.buffer.setWindowBase(base);
+						windowBaseAfterSet[0] = terminalView.bridge.buffer.getWindowBase();
+					}
+				}
+			});
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			int windowBase = getWindowBase(terminalView);
+			final int[] screenBaseAndSizes = new int[3];
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					synchronized (terminalView.bridge.buffer) {
+						de.mud.terminal.VDUBuffer buffer = terminalView.bridge.getVDUBuffer();
+						screenBaseAndSizes[0] = buffer.screenBase;
+						screenBaseAndSizes[1] = buffer.getBufferSize();
+						screenBaseAndSizes[2] = buffer.getMaxBufferSize();
+					}
+				}
+			});
+			final int screenBase = screenBaseAndSizes[0];
+			final int bufferSize = screenBaseAndSizes[1];
+			final int maxBufferSize = screenBaseAndSizes[2];
+			final int cols = getTerminalCols(terminalView);
+			final int targetCol = Math.min(Math.max(0, tokenPos.col + 2), Math.max(0, cols - 1));
+			final int screenRow = tokenPos.row - windowBase;
+
+			float x = targetCol * terminalView.bridge.charWidth + terminalView.bridge.charWidth / 2f;
+			float y = screenRow * terminalView.bridge.charHeight + terminalView.bridge.charHeight / 2f;
+
+			final char expectedChar = getBufferCharAt(terminalView, tokenPos.row, targetCol);
+			final char actualCharAtHit = getOverlayCharAtPosition(terminalView, x, y);
+			final boolean isHitInsideViewport = screenRow >= 0 && screenRow < rows;
+
+			longPressTerminalAt(terminalView, x, y);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertOverlayScrollAlignedWithWindowBase(terminalView);
+
+			final int[] selStartEnd = new int[2];
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					TerminalTextViewOverlay overlay = (TerminalTextViewOverlay) terminalView.getChildAt(0);
+					selStartEnd[0] = overlay.getSelectionStart();
+					selStartEnd[1] = overlay.getSelectionEnd();
+				}
+			});
+
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					terminalView.copyCurrentSelectionToClipboard();
+			}
+			});
+
+			String clip = clipboard.hasText() ? clipboard.getText().toString() : "";
+			if (clip.isEmpty()) {
+				throw new AssertionError(
+						"Clipboard empty after long-press selection.\n"
+								+ "  requestedWindowBase=" + base + " windowBaseAfterSet=" + windowBaseAfterSet[0] + " actualWindowBase=" + windowBase + "\n"
+								+ "  screenBase=" + screenBase + " bufferSize=" + bufferSize + " maxBufferSize=" + maxBufferSize + "\n"
+								+ "  tokenRow=" + tokenPos.row + " tokenCol=" + tokenPos.col + " targetCol=" + targetCol + "\n"
+								+ "  screenRow=" + screenRow + " rows=" + rows + " inViewport=" + isHitInsideViewport + "\n"
+								+ "  expectedCharAtBuffer='" + expectedChar + "' actualCharAtHit='" + actualCharAtHit + "'\n"
+								+ "  selectionStart=" + selStartEnd[0] + " selectionEnd=" + selStartEnd[1]);
+			}
+			clipboard.setText("");
+			return clip;
 		}
-
-		final int base = Math.max(0, targetBase);
-		getInstrumentation().runOnMainSync(new Runnable() {
-			@Override
-			public void run() {
-				terminalView.bridge.buffer.setWindowBase(base);
-			}
-		});
-		onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
-
-		int windowBase = getWindowBase(terminalView);
-		float x = (tokenPos.col + 2) * terminalView.bridge.charWidth + terminalView.bridge.charWidth / 2f;
-		float y = (tokenPos.row - windowBase) * terminalView.bridge.charHeight + terminalView.bridge.charHeight / 2f;
-		longPressTerminalAt(terminalView, x, y);
-		onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
-		assertOverlayScrollAlignedWithWindowBase(terminalView);
-
-		getInstrumentation().runOnMainSync(new Runnable() {
-			@Override
-			public void run() {
-				terminalView.copyCurrentSelectionToClipboard();
-			}
-		});
-
-		String clip = clipboard.hasText() ? clipboard.getText().toString() : "";
-		clipboard.setText("");
-		return clip;
-	}
 
 	private static void assertOverlayAlignedWithTerminalGrid(final TerminalView terminalView) {
 		final int[] overlayLineHeight = new int[1];
@@ -448,7 +626,9 @@ public class TerminalSelectionCopyTest {
 		getInstrumentation().runOnMainSync(new Runnable() {
 			@Override
 			public void run() {
-				terminalView.bridge.buffer.setWindowBase(base);
+				synchronized (terminalView.bridge.buffer) {
+					terminalView.bridge.buffer.setWindowBase(base);
+				}
 				TerminalTextViewOverlay overlay = (TerminalTextViewOverlay) terminalView.getChildAt(0);
 				overlay.refreshTextFromBuffer();
 			}
@@ -778,22 +958,24 @@ public class TerminalSelectionCopyTest {
 		getInstrumentation().runOnMainSync(new Runnable() {
 			@Override
 			public void run() {
-				de.mud.terminal.VDUBuffer buffer = terminalView.bridge.getVDUBuffer();
-				int cols = buffer.getColumns();
+				synchronized (terminalView.bridge.buffer) {
+					de.mud.terminal.VDUBuffer buffer = terminalView.bridge.getVDUBuffer();
+					int cols = buffer.getColumns();
 
-				for (int r = buffer.getBufferSize() - 1; r >= 0; r--) {
-					if (buffer.charArray[r] == null) {
-						continue;
-					}
-					StringBuilder line = new StringBuilder(cols);
-					for (int c = 0; c < cols; c++) {
-						line.append(buffer.charArray[r][c]);
-					}
-					String lineStr = line.toString();
-					int idx = lineStr.indexOf(token);
-					if (idx >= 0) {
-						found[0] = new BufferPosition(r, idx);
-						return;
+					for (int r = buffer.getBufferSize() - 1; r >= 0; r--) {
+						if (buffer.charArray[r] == null) {
+							continue;
+						}
+						StringBuilder line = new StringBuilder(cols);
+						for (int c = 0; c < cols; c++) {
+							line.append(buffer.charArray[r][c]);
+						}
+						String lineStr = line.toString();
+						int idx = lineStr.indexOf(token);
+						if (idx >= 0) {
+							found[0] = new BufferPosition(r, idx);
+							return;
+						}
 					}
 				}
 			}
@@ -831,6 +1013,20 @@ public class TerminalSelectionCopyTest {
 			execShellCommand("settings put secure show_ime_with_hard_keyboard 1");
 		} catch (Throwable ignored) {
 			// Best-effort; if this fails, tests that rely on IME visibility will fail and surface it.
+		}
+	}
+
+	private static void wakeAndUnlockDeviceIfPossible() {
+		// Some devices/profiles can start in a locked state even after sys.boot_completed=1, which
+		// causes Espresso to report "No activities in stage RESUMED" when attempting to interact
+		// with the app UI.
+		try {
+			execShellCommand("input keyevent 224"); // KEYCODE_WAKEUP
+		} catch (Throwable ignored) {
+		}
+		try {
+			execShellCommand("wm dismiss-keyguard");
+		} catch (Throwable ignored) {
 		}
 	}
 
