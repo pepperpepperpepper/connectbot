@@ -77,11 +77,9 @@ class ConnectionNotifier @Inject constructor() {
         getNotificationManager(context).createNotificationChannel(nc)
     }
 
-    private fun newActivityNotification(context: Context, host: Host): Notification {
+    private fun newActivityNotification(context: Context, host: Host, message: String?): Notification {
         val builder = newNotificationBuilder(context, NOTIFICATION_CHANNEL)
         val res = context.resources
-
-        val contentText = res.getString(R.string.notification_text, host.nickname)
 
         val notificationIntent = Intent(context, MainActivity::class.java).apply {
             action = Intent.ACTION_VIEW
@@ -95,10 +93,20 @@ class ConnectionNotifier @Inject constructor() {
             pendingIntentFlags
         )
 
-        builder.setContentTitle(res.getString(R.string.app_name))
-            .setContentText(contentText)
+        val messageText = message?.trim()?.takeIf { it.isNotEmpty() }
+        val contentText =
+            messageText ?: res.getString(R.string.notification_text, host.nickname)
+        val singleLineText =
+            contentText.lineSequence().firstOrNull()?.takeIf { it.isNotBlank() } ?: contentText
+
+        builder.setContentTitle(host.nickname)
+            .setContentText(singleLineText)
             .setContentIntent(contentIntent)
             .setAutoCancel(true)
+
+        if (messageText != null) {
+            builder.setStyle(NotificationCompat.BigTextStyle().bigText(messageText))
+        }
 
         val ledOnMS = 300
         val ledOffMS = 1000
@@ -152,8 +160,11 @@ class ConnectionNotifier @Inject constructor() {
         return builder.build()
     }
 
-    fun showActivityNotification(context: Service, host: Host) {
-        getNotificationManager(context).notify(ACTIVITY_NOTIFICATION, newActivityNotification(context, host))
+    fun showActivityNotification(context: Service, host: Host, message: String?) {
+        getNotificationManager(context).notify(
+            activityNotificationId(host),
+            newActivityNotification(context, host, message)
+        )
     }
 
     fun showRunningNotification(context: Service) {
@@ -180,8 +191,14 @@ class ConnectionNotifier @Inject constructor() {
 
     companion object {
         private const val ONLINE_NOTIFICATION = 1
-        private const val ACTIVITY_NOTIFICATION = 2
         private const val ONLINE_DISCONNECT_NOTIFICATION = 3
         private const val NOTIFICATION_CHANNEL = "my_connectbot_channel"
+
+        private const val ACTIVITY_NOTIFICATION_BASE = 1000
+
+        private fun activityNotificationId(host: Host): Int {
+            val hash = host.id.hashCode() and 0x7fffffff
+            return ACTIVITY_NOTIFICATION_BASE + (hash % (Int.MAX_VALUE - ACTIVITY_NOTIFICATION_BASE))
+        }
     }
 }

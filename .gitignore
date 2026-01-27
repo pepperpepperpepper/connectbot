@@ -30,3 +30,6 @@ build/
 
 # Jenkinsfile-runner
 \.jenkinsfile-runner/
+
+# Local docs / release notes (not committed)
+fdroid-instructions.md

@@ -66,19 +66,20 @@ import timber.log.Timber
 // TODO: Move back to ComponentActivity when https://issuetracker.google.com/issues/178855209 is fixed.
 //       FragmentActivity subclass is required for BiometricPrompt to find the FragmentManager
 //       from Compose context.
-@AndroidEntryPoint
-class MainActivity : AppCompatActivity() {
+	@AndroidEntryPoint
+	class MainActivity : AppCompatActivity() {
     companion object {
         private const val STATE_SELECTED_URI = "selectedUri"
         const val DISCONNECT_ACTION = "org.connectbot.action.DISCONNECT"
     }
 
-    internal lateinit var appViewModel: AppViewModel
-    private var bound = false
-    private var requestedUri: Uri? by mutableStateOf(null)
-    private var pendingHostConnection: Host? by mutableStateOf(null)
-    internal var makingShortcut by mutableStateOf(false)
-    private var showDisconnectAllDialog by mutableStateOf(false)
+	    internal lateinit var appViewModel: AppViewModel
+	    private var bound = false
+	    private lateinit var serviceIntent: Intent
+	    private var requestedUri: Uri? by mutableStateOf(null)
+	    private var pendingHostConnection: Host? by mutableStateOf(null)
+	    internal var makingShortcut by mutableStateOf(false)
+	    private var showDisconnectAllDialog by mutableStateOf(false)
 
     private val requestNotificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -116,11 +117,12 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        enableEdgeToEdge()
-        super.onCreate(savedInstanceState)
+	    override fun onCreate(savedInstanceState: Bundle?) {
+	        enableEdgeToEdge()
+	        super.onCreate(savedInstanceState)
 
-        appViewModel = ViewModelProvider(this)[AppViewModel::class.java]
+	        appViewModel = ViewModelProvider(this)[AppViewModel::class.java]
+	        serviceIntent = Intent(this, TerminalManager::class.java)
 
         if (savedInstanceState == null) {
             requestedUri = intent?.data
@@ -134,10 +136,7 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        val serviceIntent = Intent(this, TerminalManager::class.java)
-        bindService(serviceIntent, connection, BIND_AUTO_CREATE)
-
-        setContent {
+	        setContent {
             val appUiState by appViewModel.uiState.collectAsState()
             val pendingDisconnectAll by appViewModel.pendingDisconnectAll.collectAsState()
             val navController = rememberNavController()
@@ -297,11 +296,26 @@ class MainActivity : AppCompatActivity() {
                 onNavigateToConsole = onNavigateToConsole
             )
         }
-    }
+	    }
 
-    override fun onNewIntent(intent: Intent) {
-        super.onNewIntent(intent)
-        setIntent(intent)
+	    override fun onStart() {
+	        super.onStart()
+	        if (!bound) {
+	            bindService(serviceIntent, connection, BIND_AUTO_CREATE)
+	        }
+	    }
+
+	    override fun onStop() {
+	        if (bound) {
+	            unbindService(connection)
+	            bound = false
+	        }
+	        super.onStop()
+	    }
+
+	    override fun onNewIntent(intent: Intent) {
+	        super.onNewIntent(intent)
+	        setIntent(intent)
 
         handleIntent(intent)
 
@@ -324,14 +338,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    override fun onDestroy() {
-        Timber.d("onDestroy")
-        if (bound) {
-            unbindService(connection)
-            bound = false
-        }
-        super.onDestroy()
-    }
+	    override fun onDestroy() {
+	        Timber.d("onDestroy")
+	        super.onDestroy()
+	    }
 
     private fun handleConnectionUri(uri: Uri, controller: NavController) {
         Timber.d("handleConnectionUri: uri=$uri, fragment=${uri.fragment}")

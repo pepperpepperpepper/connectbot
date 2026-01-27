@@ -211,25 +211,40 @@ class TerminalBridge {
 
         // Initialize TerminalEmulator with colors from scheme
         // Note: We pass the actual RGB colors (not indices) wrapped in Color objects
-        terminalEmulator = TerminalEmulatorFactory.create(
-            initialRows = 24,  // Will be resized when view is attached
-            initialCols = 80,
-            defaultForeground = Color(defaultFgColor),
-            defaultBackground = Color(defaultBgColor),
-            onKeyboardInput = { data ->
-                transportOperations.trySend(TransportOperation.WriteData(data))
-            },
-            onBell = {
-                scope.launch {
-                    _bellEvents.emit(Unit)
-                }
-                manager.sendActivityNotification(host)
-            },
-            onResize = {
-                transportOperations.trySend(
-                    TransportOperation.SetDimensions(it.columns, it.rows, 0, 0)
-                )
-            },
+	        terminalEmulator = TerminalEmulatorFactory.create(
+	            initialRows = 24,  // Will be resized when view is attached
+	            initialCols = 80,
+	            defaultForeground = Color(defaultFgColor),
+	            defaultBackground = Color(defaultBgColor),
+	            onKeyboardInput = { data ->
+	                transportOperations.trySend(TransportOperation.WriteData(data))
+	            },
+	            onBell = {
+	                scope.launch {
+	                    _bellEvents.emit(Unit)
+	                }
+	                val snippet = terminalEmulator.getRecentText(maxLines = 2, maxChars = 200)
+	                manager.sendActivityNotification(host, snippet)
+	            },
+	            onNotify = { notification ->
+	                scope.launch {
+	                    _bellEvents.emit(Unit)
+	                }
+
+	                val message =
+	                    if (!notification.title.isNullOrBlank() && notification.body.isNotBlank()) {
+	                        "${notification.title}\n${notification.body}"
+	                    } else {
+	                        notification.title?.takeIf { it.isNotBlank() } ?: notification.body
+	                    }
+
+	                manager.sendActivityNotification(host, message)
+	            },
+	            onResize = {
+	                transportOperations.trySend(
+	                    TransportOperation.SetDimensions(it.columns, it.rows, 0, 0)
+	                )
+	            },
             onClipboardCopy = { text ->
                 // OSC 52 clipboard support - copy remote text to local clipboard
                 Timber.i("OSC 52 clipboard copy: ${text.length} chars")
@@ -872,20 +887,17 @@ class TerminalBridge {
      * @return
      */
     fun scanForURLs(): List<String> {
-        // buffer!! is intentional - buffer is initialized in constructor and must be non-null
-        val urls = mutableListOf<String>()
+        // Best-effort scan of recent terminal output for URI-like strings.
+        val text = terminalEmulator.getRecentText(maxLines = 200, maxChars = 20_000)
+        if (text.isBlank()) return emptyList()
 
-        // TODO(Terminal): replace URL scanner
-//        val visibleBuffer = CharArray(buffer!!.height * buffer!!.width)
-//        for (l in 0 until buffer!!.height)
-//            System.arraycopy(buffer!!.charArray[buffer!!.windowBase + l], 0,
-//                    visibleBuffer, l * buffer!!.width, buffer!!.width)
-//
-//        val urlMatcher = PatternHolder.urlPattern.matcher(String(visibleBuffer))
-//        while (urlMatcher.find())
-//            urls.add(urlMatcher.group())
+        val urls = LinkedHashSet<String>()
+        val matcher = PatternHolder.urlPattern.matcher(text)
+        while (matcher.find()) {
+            urls.add(matcher.group())
+        }
 
-        return urls
+        return urls.toList()
     }
 
     /**

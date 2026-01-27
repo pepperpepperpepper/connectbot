@@ -53,6 +53,7 @@ data class SettingsUiState(
     val titlebarhide: Boolean = false,
     val fullscreen: Boolean = false,
     val pgupdngesture: Boolean = false,
+    val tapToOpenLinks: Boolean = false,
     val volumefont: Boolean = true,
     val keepalive: Boolean = true,
     val alwaysvisible: Boolean = false,
@@ -103,6 +104,9 @@ class SettingsViewModel @Inject constructor(
             prefs.edit { putBoolean(PreferenceConstants.NOTIFICATION_PERMISSION_DENIED, value) }
         }
 
+    private var pendingConnPersistEnable = false
+    private var pendingBellNotificationEnable = false
+
     init {
         loadProfiles()
     }
@@ -139,6 +143,7 @@ class SettingsViewModel @Inject constructor(
             titlebarhide = prefs.getBoolean("titlebarhide", false),
             fullscreen = prefs.getBoolean("fullscreen", false),
             pgupdngesture = prefs.getBoolean("pgupdngesture", false),
+            tapToOpenLinks = prefs.getBoolean(PreferenceConstants.TAP_TO_OPEN_LINKS, true),
             volumefont = prefs.getBoolean("volumefont", true),
             keepalive = prefs.getBoolean("keepalive", true),
             alwaysvisible = prefs.getBoolean("alwaysvisible", false),
@@ -177,6 +182,7 @@ class SettingsViewModel @Inject constructor(
             } else {
                 // First time or permission not denied yet - optimistically update to ON
                 // and request permission. If denied, onNotificationPermissionResult will revert to OFF.
+                pendingConnPersistEnable = true
                 updateBooleanPref(PreferenceConstants.CONNECTION_PERSIST, true) { copy(connPersist = true) }
                 viewModelScope.launch {
                     _requestNotificationPermission.send(Unit)
@@ -184,25 +190,39 @@ class SettingsViewModel @Inject constructor(
             }
         } else {
             // Turning OFF or already ON - just update the preference
+            if (!value) {
+                pendingConnPersistEnable = false
+            }
             updateBooleanPref(PreferenceConstants.CONNECTION_PERSIST, value) { copy(connPersist = value) }
         }
     }
 
     /**
      * Called with the result of the notification permission request.
-     * If permission is granted, enable connPersist. If denied, keep it OFF.
+     * If permission is granted, enable any pending preferences. If denied, disable features that require notifications.
      */
     fun onNotificationPermissionResult(isGranted: Boolean) {
         if (isGranted) {
-            Timber.d("Notification permission granted, enabling connPersist")
             wasPermissionDenied = false
-            updateBooleanPref(PreferenceConstants.CONNECTION_PERSIST, true) { copy(connPersist = true) }
+
+            if (pendingConnPersistEnable) {
+                Timber.d("Notification permission granted, enabling connPersist")
+                updateBooleanPref(PreferenceConstants.CONNECTION_PERSIST, true) { copy(connPersist = true) }
+            }
+            if (pendingBellNotificationEnable) {
+                Timber.d("Notification permission granted, enabling bellNotification")
+                updateBooleanPref(PreferenceConstants.BELL_NOTIFICATION, true) { copy(bellNotification = true) }
+            }
         } else {
-            // Permission denied - keep it OFF and mark as denied
-            Timber.d("Notification permission denied, keeping connPersist OFF")
+            // Permission denied - disable features that rely on posting notifications.
+            Timber.d("Notification permission denied, disabling notification-dependent features")
             wasPermissionDenied = true
             updateBooleanPref(PreferenceConstants.CONNECTION_PERSIST, false) { copy(connPersist = false) }
+            updateBooleanPref(PreferenceConstants.BELL_NOTIFICATION, false) { copy(bellNotification = false) }
         }
+
+        pendingConnPersistEnable = false
+        pendingBellNotificationEnable = false
     }
 
     fun updateWifilock(value: Boolean) {
@@ -230,7 +250,25 @@ class SettingsViewModel @Inject constructor(
     }
 
     fun updateBellNotification(value: Boolean) {
-        updateBooleanPref("bellNotification", value) { copy(bellNotification = value) }
+        val currentValue = _uiState.value.bellNotification
+        if (!currentValue && value) {
+            if (wasPermissionDenied) {
+                viewModelScope.launch {
+                    _showPermissionDeniedDialog.send(Unit)
+                }
+            } else {
+                pendingBellNotificationEnable = true
+                updateBooleanPref(PreferenceConstants.BELL_NOTIFICATION, true) { copy(bellNotification = true) }
+                viewModelScope.launch {
+                    _requestNotificationPermission.send(Unit)
+                }
+            }
+        } else {
+            if (!value) {
+                pendingBellNotificationEnable = false
+            }
+            updateBooleanPref(PreferenceConstants.BELL_NOTIFICATION, value) { copy(bellNotification = value) }
+        }
     }
 
     fun updateTitleBarHide(value: Boolean) {
@@ -239,6 +277,10 @@ class SettingsViewModel @Inject constructor(
 
     fun updatePgUpDnGesture(value: Boolean) {
         updateBooleanPref("pgupdngesture", value) { copy(pgupdngesture = value) }
+    }
+
+    fun updateTapToOpenLinks(value: Boolean) {
+        updateBooleanPref(PreferenceConstants.TAP_TO_OPEN_LINKS, value) { copy(tapToOpenLinks = value) }
     }
 
     fun updateVolumeFont(value: Boolean) {

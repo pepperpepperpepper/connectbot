@@ -18,14 +18,18 @@
 package org.connectbot.ui.screens.console
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.content.SharedPreferences
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -63,8 +67,10 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
@@ -128,6 +134,29 @@ private fun rememberHasHardwareKeyboard(): Boolean {
 	}
 }
 
+@Composable
+private fun rememberBooleanPreference(
+    prefs: SharedPreferences,
+    key: String,
+    defaultValue: Boolean
+): State<Boolean> {
+    val state = remember(prefs, key) {
+        mutableStateOf(prefs.getBoolean(key, defaultValue))
+    }
+
+    DisposableEffect(prefs, key) {
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, changedKey ->
+            if (changedKey == key) {
+                state.value = prefs.getBoolean(key, defaultValue)
+            }
+        }
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+        onDispose { prefs.unregisterOnSharedPreferenceChangeListener(listener) }
+    }
+
+    return state
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ConsoleScreen(
@@ -145,10 +174,11 @@ fun ConsoleScreen(
 
     // Read preferences
     val prefs = remember { PreferenceManager.getDefaultSharedPreferences(context) }
-    val keyboardAlwaysVisible = remember { prefs.getBoolean("alwaysvisible", false) }
+    val keyboardAlwaysVisible by rememberBooleanPreference(prefs, "alwaysvisible", false)
     var fullscreen by remember { mutableStateOf(prefs.getBoolean("fullscreen", false)) }
     var titleBarHide by remember { mutableStateOf(prefs.getBoolean("titlebarhide", false)) }
-    val volumeKeysChangeFontSize = remember { prefs.getBoolean(PreferenceConstants.VOLUME_FONT, true) }
+    val volumeKeysChangeFontSize by rememberBooleanPreference(prefs, PreferenceConstants.VOLUME_FONT, true)
+    val tapToOpenLinks by rememberBooleanPreference(prefs, PreferenceConstants.TAP_TO_OPEN_LINKS, true)
 
     // Keyboard state
     val hasHardwareKeyboard = rememberHasHardwareKeyboard()
@@ -168,6 +198,7 @@ fun ConsoleScreen(
     var showTitleBar by remember { mutableStateOf(!titleBarHide) }
     var lastInteractionTime by remember { mutableLongStateOf(System.currentTimeMillis()) }
     var scannedUrls by remember { mutableStateOf<List<String>>(emptyList()) }
+    var pendingHyperlinkUrl by remember { mutableStateOf<String?>(null) }
     var imeVisible by remember { mutableStateOf(false) }
 
     // Apply fullscreen mode and display cutout settings
@@ -267,6 +298,18 @@ fun ConsoleScreen(
                 message = error,
                 withDismissAction = true
             )
+        }
+    }
+
+    fun openUrlInBrowser(url: String) {
+        val intent = Intent(Intent.ACTION_VIEW, url.toUri())
+        if (context !is Activity) {
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        try {
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Timber.e(e, "Unable to open URL: %s", url)
         }
     }
 
@@ -403,6 +446,10 @@ fun ConsoleScreen(
                             onImeVisibilityChanged = { visible ->
                                 imeVisible = visible
                             },
+                            detectUrlsOnTap = tapToOpenLinks,
+                            onHyperlinkClick = { url ->
+                                pendingHyperlinkUrl = url
+                            },
                         )
 
                         // Set up text input request callback from bridge (for camera button)
@@ -467,14 +514,56 @@ fun ConsoleScreen(
         if (showUrlScanDialog) {
             UrlScanDialog(
                 urls = scannedUrls,
-                onDismiss = { showUrlScanDialog = false },
+                onDismiss = {
+                    showUrlScanDialog = false
+                    termFocusRequester.requestFocus()
+                },
                 onUrlClick = { url ->
-                    // Open URL in browser
-                    val intent = android.content.Intent(
-                        android.content.Intent.ACTION_VIEW,
-                        url.toUri()
-                    )
-                    context.startActivity(intent)
+                    openUrlInBrowser(url)
+                }
+            )
+        }
+
+        pendingHyperlinkUrl?.let { url ->
+            AlertDialog(
+                onDismissRequest = {
+                    pendingHyperlinkUrl = null
+                    termFocusRequester.requestFocus()
+                },
+                title = { Text(stringResource(R.string.open_url_title)) },
+                text = { Text(url) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            pendingHyperlinkUrl = null
+                            openUrlInBrowser(url)
+                        }
+                    ) {
+                        Text(stringResource(R.string.button_open))
+                    }
+                },
+                dismissButton = {
+                    Row {
+                        TextButton(
+                            onClick = {
+                                val clipboard =
+                                    context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("url", url))
+                                pendingHyperlinkUrl = null
+                                termFocusRequester.requestFocus()
+                            }
+                        ) {
+                            Text(stringResource(R.string.button_copy))
+                        }
+                        TextButton(
+                            onClick = {
+                                pendingHyperlinkUrl = null
+                                termFocusRequester.requestFocus()
+                            }
+                        ) {
+                            Text(stringResource(R.string.button_cancel))
+                        }
+                    }
                 }
             )
         }

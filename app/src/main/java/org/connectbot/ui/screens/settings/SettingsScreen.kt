@@ -164,6 +164,7 @@ fun SettingsScreen(
         onFullscreenChange = viewModel::updateFullscreen,
         onTitleBarHideChange = viewModel::updateTitleBarHide,
         onPgUpDnGestureChange = viewModel::updatePgUpDnGesture,
+        onTapToOpenLinksChange = viewModel::updateTapToOpenLinks,
         onVolumeFontChange = viewModel::updateVolumeFont,
         onKeepAliveChange = viewModel::updateKeepAlive,
         onAlwaysVisibleChange = viewModel::updateAlwaysVisible,
@@ -205,6 +206,7 @@ fun SettingsScreenContent(
     onFullscreenChange: (Boolean) -> Unit,
     onTitleBarHideChange: (Boolean) -> Unit,
     onPgUpDnGestureChange: (Boolean) -> Unit,
+    onTapToOpenLinksChange: (Boolean) -> Unit,
     onVolumeFontChange: (Boolean) -> Unit,
     onKeepAliveChange: (Boolean) -> Unit,
     onAlwaysVisibleChange: (Boolean) -> Unit,
@@ -415,6 +417,15 @@ fun SettingsScreenContent(
                     summary = stringResource(R.string.pref_pg_updn_gesture_summary),
                     checked = uiState.pgupdngesture,
                     onCheckedChange = onPgUpDnGestureChange
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    title = stringResource(R.string.pref_tap_to_open_links_title),
+                    summary = stringResource(R.string.pref_tap_to_open_links_summary),
+                    checked = uiState.tapToOpenLinks,
+                    onCheckedChange = onTapToOpenLinksChange
                 )
             }
 
@@ -1253,6 +1264,7 @@ private fun SettingsScreenPreview() {
                 titlebarhide = false,
                 fullscreen = true,
                 pgupdngesture = true,
+                tapToOpenLinks = false,
                 volumefont = true,
                 keepalive = true,
                 alwaysvisible = true,
@@ -1295,6 +1307,7 @@ private fun SettingsScreenPreview() {
             onFullscreenChange = {},
             onTitleBarHideChange = {},
             onPgUpDnGestureChange = {},
+            onTapToOpenLinksChange = {},
             onVolumeFontChange = {},
             onKeepAliveChange = {},
             onAlwaysVisibleChange = {},

@@ -26,17 +26,48 @@ coveralls {
 
 appVersioning {
     tagFilter.set("v[0-9].*")
-    overrideVersionCode { gitTag, _, _ ->
-        val semVer = gitTag.toSemVer()
-        semVer.major * 10000000 + semVer.minor * 100000 + semVer.patch * 1000 + gitTag.commitsSinceLatestTag
-    }
-    overrideVersionName { gitTag, _, _ ->
-        if (gitTag.commitsSinceLatestTag != 0) {
-            "git-${gitTag.rawTagName}-${gitTag.commitsSinceLatestTag}-g${gitTag.commitHash}"
-        } else {
-            gitTag.rawTagName
+    val forcedVersionCode = providers.gradleProperty("forceVersionCode").orNull?.trim()?.toIntOrNull()
+    val forcedVersionName = providers.gradleProperty("forceVersionName").orNull?.trim()?.takeIf { it.isNotBlank() }
+
+    // NOTE: These customizers must be Serializable or Gradle cannot snapshot/fingerprint them.
+    overrideVersionCode(
+        object :
+            (io.github.reactivecircus.appversioning.GitTag, org.gradle.api.provider.ProviderFactory, io.github.reactivecircus.appversioning.VariantInfo) -> Int,
+            java.io.Serializable {
+            override fun invoke(
+                gitTag: io.github.reactivecircus.appversioning.GitTag,
+                providers: org.gradle.api.provider.ProviderFactory,
+                variantInfo: io.github.reactivecircus.appversioning.VariantInfo
+            ): Int {
+                return forcedVersionCode
+                    ?: run {
+                        val semVer = gitTag.toSemVer()
+                        semVer.major * 10000000 + semVer.minor * 100000 + semVer.patch * 1000 + gitTag.commitsSinceLatestTag
+                    }
+            }
         }
-    }
+    )
+
+    overrideVersionName(
+        object :
+            (io.github.reactivecircus.appversioning.GitTag, org.gradle.api.provider.ProviderFactory, io.github.reactivecircus.appversioning.VariantInfo) -> String,
+            java.io.Serializable {
+            override fun invoke(
+                gitTag: io.github.reactivecircus.appversioning.GitTag,
+                providers: org.gradle.api.provider.ProviderFactory,
+                variantInfo: io.github.reactivecircus.appversioning.VariantInfo
+            ): String {
+                return forcedVersionName
+                    ?: run {
+                        if (gitTag.commitsSinceLatestTag != 0) {
+                            "git-${gitTag.rawTagName}-${gitTag.commitsSinceLatestTag}-g${gitTag.commitHash}"
+                        } else {
+                            gitTag.rawTagName
+                        }
+                    }
+            }
+        }
+    )
 }
 
 android {
@@ -314,7 +345,12 @@ tasks.withType<DependencyUpdatesTask>().configureEach {
 
 dependencies {
     implementation(libs.sshlib)
-    implementation(libs.termlib)
+    val termlibOverrideVersion = providers.gradleProperty("connectbotTermlibVersion").orNull?.trim()
+    if (!termlibOverrideVersion.isNullOrBlank()) {
+        implementation("org.connectbot:termlib:$termlibOverrideVersion")
+    } else {
+        implementation(libs.termlib)
+    }
     implementation(libs.androidx.media3.common.ktx)
     implementation(libs.androidx.navigation.testing)
     implementation(libs.androidx.ui)

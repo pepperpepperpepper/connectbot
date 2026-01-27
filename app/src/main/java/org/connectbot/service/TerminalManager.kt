@@ -29,6 +29,7 @@ import android.net.Uri
 import android.os.Binder
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
@@ -151,6 +152,7 @@ class TerminalManager : Service(), BridgeDisconnectedListener, OnSharedPreferenc
 
 	@Volatile
 	private var isUiBound = false
+	private val lastBellNotificationAtMs = mutableMapOf<Long, Long>()
 
 	private var resizeAllowed = true
 
@@ -735,8 +737,26 @@ class TerminalManager : Service(), BridgeDisconnectedListener, OnSharedPreferenc
 	 * @param host
 	 */
 	fun sendActivityNotification(host: Host) {
+		sendActivityNotification(host, null)
+	}
+
+	fun sendActivityNotification(host: Host, message: String?) {
 		if (!isUiBound && prefs.getBoolean(PreferenceConstants.BELL_NOTIFICATION, false)) {
-			connectionNotifier.showActivityNotification(this, host)
+			val now = SystemClock.elapsedRealtime()
+			val shouldNotify =
+				synchronized(lastBellNotificationAtMs) {
+					val last = lastBellNotificationAtMs[host.id] ?: 0L
+					if (now - last < BELL_NOTIFICATION_RATE_LIMIT_MS) {
+						false
+					} else {
+						lastBellNotificationAtMs[host.id] = now
+						true
+					}
+				}
+
+			if (shouldNotify) {
+				connectionNotifier.showActivityNotification(this, host, message)
+			}
 		}
 	}
 
@@ -875,12 +895,14 @@ class TerminalManager : Service(), BridgeDisconnectedListener, OnSharedPreferenc
 		}
 	}
 
-	companion object {
-		const val TAG = "CB.TerminalManager"
+		companion object {
+			const val TAG = "CB.TerminalManager"
 
-		const val VIBRATE_DURATION: Long = 30
+			const val VIBRATE_DURATION: Long = 30
 
-		// Must match AUTH_VALIDITY_DURATION_SECONDS in BiometricKeyManager
-		const val BIOMETRIC_AUTH_VALIDITY_SECONDS = 30
+			// Must match AUTH_VALIDITY_DURATION_SECONDS in BiometricKeyManager
+			const val BIOMETRIC_AUTH_VALIDITY_SECONDS = 30
+
+			private const val BELL_NOTIFICATION_RATE_LIMIT_MS = 3_000L
+		}
 	}
-}

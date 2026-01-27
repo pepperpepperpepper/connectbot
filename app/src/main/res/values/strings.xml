@@ -277,6 +277,11 @@
 	<!-- Summary for the full screen preference -->
 	<string name="pref_pg_updn_gesture_summary">"Swipe the left third of the screen to send pg up/dn to the terminal"</string>
 
+	<!-- Name for the tap-to-open-links preference -->
+	<string name="pref_tap_to_open_links_title">"Tap links to open"</string>
+	<!-- Summary for the tap-to-open-links preference -->
+	<string name="pref_tap_to_open_links_summary">"Show a confirmation dialog when tapping a URL in the terminal"</string>
+
 	<!-- Name for the full screen preference -->
 	<string name="pref_fullscreen_title">"Full screen"</string>
 	<!-- Summary for the full screen preference -->
@@ -553,6 +558,9 @@
 	<!-- Button that brings up the list of URLs on the current screen -->
 	<string name="console_menu_urlscan">"URL scan"</string>
 
+	<!-- Dialog title when confirming opening a URL -->
+	<string name="open_url_title">"Open link"</string>
+
 	<!-- Button label to answer "Yes" to a yes/no prompt -->
 	<string name="button_yes">"Yes"</string>
 	<!-- Button label to answer "No" to a yes/no prompt -->
@@ -746,6 +754,10 @@
 
 	<!-- Button text for cancel action in dialogs -->
 	<string name="button_cancel">"Cancel"</string>
+	<!-- Button text for open action in dialogs -->
+	<string name="button_open">"Open"</string>
+	<!-- Button text for copy action in dialogs -->
+	<string name="button_copy">"Copy"</string>
 
 	<!-- Label indicating a scheme is built-in and cannot be deleted -->
 	<string name="label_built_in_scheme">"Built-in"</string>

@@ -190,7 +190,7 @@ class SettingsViewModelPermissionTest {
     // region onNotificationPermissionResult tests
 
     @Test
-    fun onNotificationPermissionResult_Granted_EnablesConnPersistAndClearsDenialState() = runTest {
+    fun onNotificationPermissionResult_Granted_ClearsDenialState() = runTest {
         // First deny permission to set the denial state
         viewModel.onNotificationPermissionResult(false)
         advanceUntilIdle()
@@ -200,7 +200,6 @@ class SettingsViewModelPermissionTest {
         advanceUntilIdle()
 
         verify(prefsEditor).putBoolean(eq(PreferenceConstants.NOTIFICATION_PERMISSION_DENIED), eq(false))
-        verify(prefsEditor).putBoolean(eq(PreferenceConstants.CONNECTION_PERSIST), eq(true))
         verify(prefsEditor, atLeastOnce()).apply()
 
         // Verify denial state is persisted by recreating ViewModel
@@ -232,6 +231,7 @@ class SettingsViewModelPermissionTest {
 
         verify(prefsEditor).putBoolean(eq(PreferenceConstants.NOTIFICATION_PERMISSION_DENIED), eq(true))
         verify(prefsEditor).putBoolean(eq(PreferenceConstants.CONNECTION_PERSIST), eq(false))
+        verify(prefsEditor).putBoolean(eq(PreferenceConstants.BELL_NOTIFICATION), eq(false))
         verify(prefsEditor, atLeastOnce()).apply()
 
         // Update mock to return true for wasPermissionDenied
@@ -285,6 +285,57 @@ class SettingsViewModelPermissionTest {
 
     // endregion
 
+    // region updateBellNotification tests
+
+    @Test
+    fun updateBellNotification_TurningOn_FirstTime_RequestsPermissionAndOptimisticallyUpdates() = runTest {
+        val permissionRequests = mutableListOf<Unit>()
+        val job = launch {
+            viewModel.requestNotificationPermission.collect {
+                permissionRequests.add(it)
+            }
+        }
+
+        viewModel.updateBellNotification(true)
+        advanceUntilIdle()
+
+        assertEquals("Should request permission", 1, permissionRequests.size)
+        // Should optimistically update preference to ON while waiting for permission result
+        verify(prefsEditor).putBoolean(eq(PreferenceConstants.BELL_NOTIFICATION), eq(true))
+
+        job.cancel()
+    }
+
+    @Test
+    fun updateBellNotification_TurningOn_AfterDenied_ShowsPermissionDeniedDialog() = runTest {
+        // First deny permission
+        viewModel.updateBellNotification(true)
+        advanceUntilIdle()
+        viewModel.onNotificationPermissionResult(false)
+        advanceUntilIdle()
+
+        // Update mock to return true for wasPermissionDenied after denial
+        whenever(prefs.getBoolean(eq(PreferenceConstants.NOTIFICATION_PERMISSION_DENIED), any())).thenReturn(true)
+
+        // Collect dialog events
+        val dialogEvents = mutableListOf<Unit>()
+        val job = launch {
+            viewModel.showPermissionDeniedDialog.collect {
+                dialogEvents.add(it)
+            }
+        }
+
+        // Try to turn on again
+        viewModel.updateBellNotification(true)
+        advanceUntilIdle()
+
+        assertEquals("Should show permission denied dialog", 1, dialogEvents.size)
+
+        job.cancel()
+    }
+
+    // endregion
+
     // region Integration tests
 
     @Test
@@ -308,6 +359,31 @@ class SettingsViewModelPermissionTest {
 
         // Preference should be set to true (called twice: optimistic update + permission granted)
         verify(prefsEditor, atLeastOnce()).putBoolean(eq(PreferenceConstants.CONNECTION_PERSIST), eq(true))
+
+        requestJob.cancel()
+    }
+
+    @Test
+    fun permissionFlow_GrantedOnFirstAttempt_EnablesBellNotification() = runTest {
+        val permissionRequests = mutableListOf<Unit>()
+        val requestJob = launch {
+            viewModel.requestNotificationPermission.collect {
+                permissionRequests.add(it)
+            }
+        }
+
+        // User turns on bell notifications
+        viewModel.updateBellNotification(true)
+        advanceUntilIdle()
+
+        assertEquals("Should request permission", 1, permissionRequests.size)
+
+        // User grants permission
+        viewModel.onNotificationPermissionResult(true)
+        advanceUntilIdle()
+
+        // Preference should be set to true (called twice: optimistic update + permission granted)
+        verify(prefsEditor, atLeastOnce()).putBoolean(eq(PreferenceConstants.BELL_NOTIFICATION), eq(true))
 
         requestJob.cancel()
     }
