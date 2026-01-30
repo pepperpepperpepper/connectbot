@@ -95,6 +95,159 @@ class TerminalReadlineKeybindingsTest {
     }
 
     @Test
+    fun ctrlRightArrow_outputsModifiedCsi() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_CTRL_LEFT)
+            dispatchKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT)
+            dispatchKeyUp(KeyEvent.KEYCODE_DPAD_RIGHT)
+            dispatchKeyUp(KeyEvent.KEYCODE_CTRL_LEFT)
+        }
+
+        val expected = "\u001B[1;5C".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun altLeftArrow_outputsModifiedCsi() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_ALT_LEFT)
+            dispatchKeyDown(KeyEvent.KEYCODE_DPAD_LEFT)
+            dispatchKeyUp(KeyEvent.KEYCODE_DPAD_LEFT)
+            dispatchKeyUp(KeyEvent.KEYCODE_ALT_LEFT)
+        }
+
+        val expected = "\u001B[1;3D".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun altRightArrow_outputsModifiedCsi() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_ALT_LEFT)
+            dispatchKeyDown(KeyEvent.KEYCODE_DPAD_RIGHT)
+            dispatchKeyUp(KeyEvent.KEYCODE_DPAD_RIGHT)
+            dispatchKeyUp(KeyEvent.KEYCODE_ALT_LEFT)
+        }
+
+        val expected = "\u001B[1;3C".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun shiftTab_outputsBacktab() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_SHIFT_LEFT)
+            dispatchKeyDown(KeyEvent.KEYCODE_TAB)
+            dispatchKeyUp(KeyEvent.KEYCODE_TAB)
+            dispatchKeyUp(KeyEvent.KEYCODE_SHIFT_LEFT)
+        }
+
+        val expected = "\u001B[Z".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun moveHome_outputsHomeSequence() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_MOVE_HOME)
+            dispatchKeyUp(KeyEvent.KEYCODE_MOVE_HOME)
+        }
+
+        val expected = "\u001B[H".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun moveEnd_outputsEndSequence() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_MOVE_END)
+            dispatchKeyUp(KeyEvent.KEYCODE_MOVE_END)
+        }
+
+        val expected = "\u001B[F".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun pageUp_outputsSequence() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_PAGE_UP)
+            dispatchKeyUp(KeyEvent.KEYCODE_PAGE_UP)
+        }
+
+        val expected = "\u001B[5~".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun pageDown_outputsSequence() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_PAGE_DOWN)
+            dispatchKeyUp(KeyEvent.KEYCODE_PAGE_DOWN)
+        }
+
+        val expected = "\u001B[6~".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun insert_outputsSequence() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_INSERT)
+            dispatchKeyUp(KeyEvent.KEYCODE_INSERT)
+        }
+
+        val expected = "\u001B[2~".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun delete_outputsSequence() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_FORWARD_DEL)
+            dispatchKeyUp(KeyEvent.KEYCODE_FORWARD_DEL)
+        }
+
+        val expected = "\u001B[3~".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun ctrlSpace_outputsNul() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_CTRL_LEFT)
+            dispatchKeyDown(KeyEvent.KEYCODE_SPACE)
+            dispatchKeyUp(KeyEvent.KEYCODE_SPACE)
+            dispatchKeyUp(KeyEvent.KEYCODE_CTRL_LEFT)
+        }
+
+        assertThat(drainKeyboardOutput(harness.output).map { it.toInt() and 0xff })
+            .containsExactly(0x00)
+    }
+
+    @Test
     fun ctrlE_outputsControlE() {
         val harness = setUpTerminal()
 
@@ -211,6 +364,19 @@ class TerminalReadlineKeybindingsTest {
         composeTestRule.runOnIdle {
             dispatchKeyDown(KeyEvent.KEYCODE_DPAD_LEFT, metaState = KeyEvent.META_CTRL_ON)
             dispatchKeyUp(KeyEvent.KEYCODE_DPAD_LEFT, metaState = KeyEvent.META_CTRL_ON)
+        }
+
+        val expected = "\u001B[1;5D".toByteArray(Charsets.UTF_8)
+        assertThat(drainKeyboardOutput(harness.output).toList()).isEqualTo(expected.toList())
+    }
+
+    @Test
+    fun ctrlLeftArrow_outputsModifiedCsi_fromCtrlLeftMetaStateOnly() {
+        val harness = setUpTerminal()
+
+        composeTestRule.runOnIdle {
+            dispatchKeyDown(KeyEvent.KEYCODE_DPAD_LEFT, metaState = KeyEvent.META_CTRL_LEFT_ON)
+            dispatchKeyUp(KeyEvent.KEYCODE_DPAD_LEFT, metaState = KeyEvent.META_CTRL_LEFT_ON)
         }
 
         val expected = "\u001B[1;5D".toByteArray(Charsets.UTF_8)

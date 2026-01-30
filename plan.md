@@ -243,6 +243,14 @@ Capture:
   - `Ctrl+A` outputs `0x01`
   - `Alt+B` outputs `ESC b`
   - `Ctrl+Left` outputs `ESC[1;5D`
+  - “All xterm-style” modified navigation keys (at minimum):
+    - `Ctrl+Right` → `ESC[1;5C`
+    - `Alt+Left/Right` → `ESC[1;3D` / `ESC[1;3C`
+    - `Shift+Tab` → `ESC[Z`
+    - `Home/End` → `ESC[H` / `ESC[F`
+    - `PageUp/PageDown` → `ESC[5~` / `ESC[6~`
+    - `Insert/Delete` → `ESC[2~` / `ESC[3~`
+    - `Ctrl+Space` → `NUL (0x00)` (readline/emacs-style mark)
 
 ### Current status (Jan 26, 2026)
 
@@ -251,6 +259,7 @@ Capture:
   - “held modifier key” paths (`CtrlLeft` down → `A`)
   - meta-state-only paths (`A` with `META_CTRL_ON`, etc.)
 - Fixed `Ctrl+[` (and other Ctrl+punctuation) to emit canonical ASCII control bytes (e.g. ESC) instead of CSI-u sequences (observed: `ESC[91;5u`), so readline/vi-mode works as expected.
+- Extended coverage for additional xterm-style navigation bindings (Ctrl/Alt+arrows, Shift+Tab, Home/End, PageUp/Down, Insert/Delete, Ctrl+Space→NUL).
 - Stabilized termlib `ShellIntegrationTest` by awaiting the `snapshot` StateFlow instead of calling `processPendingUpdates()` directly (prevents flakiness from async native callbacks).
 - Verified on local Genymotion device: `cd /home/arch/termlib && ./gradlew :lib:connectedAndroidTest` ✅
 - Build note: publishing termlib to `mavenLocal` may require disabling configuration cache: `cd /home/arch/termlib && ./gradlew --no-configuration-cache :lib:publishToMavenLocal`
@@ -261,6 +270,7 @@ Capture:
 ### Troubleshooting (Ctrl+Left doesn’t skip a word)
 
 - ConnectBot should emit `ESC[1;5D` / `ESC[1;5C` for Ctrl+Left/Ctrl+Right (xterm-style).
+- If `cat -v` shows `^[[D` (plain Left Arrow) even when holding Ctrl, it can be an Android keyboard meta-state quirk: some devices set only `META_CTRL_LEFT_ON`/`META_CTRL_RIGHT_ON` (not `META_CTRL_ON`). termlib now treats the full left/right ctrl meta masks as “Ctrl held” so Ctrl+arrows emit the correct xterm sequences.
 - If the remote shell doesn’t move by word, it’s usually a **readline keybinding** issue on the remote host (or inside tmux). Quick checks:
   - In the remote shell, run `cat -v`, press Ctrl+Left, and confirm you see `^[[1;5D`.
   - Add to remote `~/.inputrc` (bash/readline):
@@ -268,6 +278,16 @@ Capture:
     - `"\e[1;5C": forward-word`
     - (optional compat) `"\e[5D": backward-word` / `"\e[5C": forward-word`
   - If using tmux, enable xterm-style modified keys: `set -g xterm-keys on`
+
+### Toggling emacs/vi editing-mode (remote shell)
+
+- This is controlled by the **remote** readline client (bash, etc.), not ConnectBot.
+- Bash interactive toggle commands:
+  - `set -o emacs`
+  - `set -o vi`
+- Readline init file (`~/.inputrc`) defaults:
+  - `set editing-mode emacs` (or `vi`)
+  - Optional keybinds (pick combos you don’t already use): bind `emacs-editing-mode` / `vi-editing-mode`.
 
 ## Genymotion release gate helper (Jan 26, 2026)
 
@@ -277,3 +297,4 @@ Capture:
   - `org.connectbot.terminal.TerminalReadlineKeybindingsTest`
 - Verified on Genymotion SaaS: `CONNECTBOT_TERMLIB_VERSION=0.0.18-SNAPSHOT scripts/run_gmsaas_release_gate.sh` ✅
 - Re-ran on Genymotion SaaS (recipe `d212b329-aacd-4fe5-aa76-3480f12a6200`) on Jan 26, 2026: ✅ (instance `45791ba8-c100-46ee-b731-2d42690d15a0`)
+- Re-ran after extending xterm-style keyboard coverage on **Jan 27, 2026**: ✅ (instance `e1ca85e9-7b30-46d0-8650-6f7bb500526a`)
