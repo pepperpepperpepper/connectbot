@@ -30,6 +30,12 @@ MAX_RUN_MINUTES="${GMSAAS_MAX_RUN_MINUTES:-60}"
 TERMLIB_VERSION="${CONNECTBOT_TERMLIB_VERSION:-}"
 GRADLE_TASK="${CONNECTBOT_GRADLE_TASK:-:app:connectedGoogleDebugAndroidTest}"
 
+if [[ "${GRADLE_TASK}" != *"connectedGoogle"* ]]; then
+  echo "Error: only the google flavor is supported for our release gate (got CONNECTBOT_GRADLE_TASK='${GRADLE_TASK}')." >&2
+  echo "Set CONNECTBOT_GRADLE_TASK=':app:connectedGoogleDebugAndroidTest' (or omit it)." >&2
+  exit 2
+fi
+
 INSTANCE_UUID=""
 ADB_SERIAL=""
 
@@ -124,4 +130,3 @@ run_test_class "org.connectbot.terminal.TerminalLinkTapTest"
 run_test_class "org.connectbot.terminal.TerminalReadlineKeybindingsTest"
 
 echo "Release gate passed ✅"
-

@@ -25,6 +25,12 @@ GRADLE_TASK="${3:-${CONNECTBOT_GRADLE_TASK:-:app:connectedGoogleDebugAndroidTest
 MAX_RUN_MINUTES="${GMSAAS_MAX_RUN_MINUTES:-60}"
 TERMLIB_VERSION="${CONNECTBOT_TERMLIB_VERSION:-}"
 
+if [[ "${GRADLE_TASK}" != *"connectedGoogle"* ]]; then
+  echo "Error: only the google flavor is supported for our Android tests on GMSaaS (got GRADLE_TASK='${GRADLE_TASK}')." >&2
+  echo "Use ':app:connectedGoogleDebugAndroidTest' (or omit GRADLE_TASK/CONNECTBOT_GRADLE_TASK)." >&2
+  exit 2
+fi
+
 INSTANCE_UUID=""
 ADB_SERIAL=""
 
