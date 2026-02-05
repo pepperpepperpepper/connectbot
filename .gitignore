@@ -17,6 +17,7 @@ local.properties
 # Android Studio
 .gradle/
 build/
+.kotlin/
 
 # Android gradle native build
 \.externalNativeBuild/
@@ -30,3 +31,6 @@ build/
 
 # Jenkinsfile-runner
 \.jenkinsfile-runner/
+
+# Local docs / release notes (not committed)
+fdroid-instructions.md
