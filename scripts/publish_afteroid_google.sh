@@ -21,6 +21,7 @@ VERSION_CODE="${2:?Usage: scripts/publish_afteroid_google.sh <versionName> <vers
 FDROID_DIR="${FDROID_DIR:-${HOME}/fdroid}"
 APPID="${FDROID_APPID:-org.connectbot}"
 TERMLIB_VERSION="${CONNECTBOT_TERMLIB_VERSION:-}"
+KOTLIN_COMPILER_STRATEGY="${CONNECTBOT_KOTLIN_COMPILER_STRATEGY:-}"
 
 if [[ ! -d "${FDROID_DIR}" ]]; then
   echo "Error: FDROID_DIR does not exist: ${FDROID_DIR}" >&2
@@ -42,11 +43,17 @@ if [[ -n "${TERMLIB_VERSION}" ]]; then
   TERMLIB_ARG+=("-PconnectbotTermlibVersion=${TERMLIB_VERSION}")
 fi
 
+KOTLIN_ARG=()
+if [[ -n "${KOTLIN_COMPILER_STRATEGY}" ]]; then
+  KOTLIN_ARG+=("-Pkotlin.compiler.execution.strategy=${KOTLIN_COMPILER_STRATEGY}")
+fi
+
 echo "Building googleRelease (${VERSION_NAME}, ${VERSION_CODE})…"
 ./gradlew --no-daemon :app:assembleGoogleRelease \
   -PforceVersionName="${VERSION_NAME}" \
   -PforceVersionCode="${VERSION_CODE}" \
-  "${TERMLIB_ARG[@]}"
+  "${TERMLIB_ARG[@]}" \
+  "${KOTLIN_ARG[@]}"
 
 APK_PATH="app/build/outputs/apk/google/release/app-google-release-unsigned.apk"
 if [[ ! -f "${APK_PATH}" ]]; then
@@ -54,7 +61,8 @@ if [[ ! -f "${APK_PATH}" ]]; then
   exit 1
 fi
 
-BADGING="$(aapt dump badging "${APK_PATH}" | head -n 1)"
+BADGING="$(aapt dump badging "${APK_PATH}")"
+BADGING="${BADGING%%$'\n'*}"
 echo "${BADGING}"
 
 if [[ "${BADGING}" != package:\ name=\'${APPID}\'* ]]; then
