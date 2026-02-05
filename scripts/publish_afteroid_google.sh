@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds + publishes the Google flavor to the local afteroid/F-Droid repo.
+# Builds + publishes the legacy (blue UI) Google flavor to the local afteroid/F-Droid repo.
 #
 # Usage:
 #   scripts/publish_afteroid_google.sh <versionName> <versionCode>
@@ -9,19 +9,24 @@ set -euo pipefail
 # Env:
 #   FDROID_DIR (default: ~/fdroid)
 #   FDROID_APPID (default: org.connectbot)
-#   CONNECTBOT_TERMLIB_VERSION (optional; wired to -PconnectbotTermlibVersion)
 #   AFTEROID_SYNC=1 to also sync to S3 + invalidate CloudFront
 #
 # Notes:
-#   - Intentionally refuses to run non-google Gradle tasks. Publishing oss is not supported.
+#   - This script is meant to be run from the legacy v1.9.13-era codebase checkout.
+#   - It refuses to publish the oss flavor (versionName suffix "-oss").
 
 VERSION_NAME="${1:?Usage: scripts/publish_afteroid_google.sh <versionName> <versionCode>}"
 VERSION_CODE="${2:?Usage: scripts/publish_afteroid_google.sh <versionName> <versionCode>}"
 
 FDROID_DIR="${FDROID_DIR:-${HOME}/fdroid}"
 APPID="${FDROID_APPID:-org.connectbot}"
-TERMLIB_VERSION="${CONNECTBOT_TERMLIB_VERSION:-}"
-KOTLIN_COMPILER_STRATEGY="${CONNECTBOT_KOTLIN_COMPILER_STRATEGY:-}"
+
+if [[ ! -f "app/src/main/java/org/connectbot/ConsoleActivity.java" ]]; then
+  echo "Error: this does not look like the legacy (blue UI) ConnectBot checkout." >&2
+  echo "Expected to find: app/src/main/java/org/connectbot/ConsoleActivity.java" >&2
+  echo "Use: ~/connectbot-release (symlink to the legacy checkout) for publishing." >&2
+  exit 2
+fi
 
 if [[ ! -d "${FDROID_DIR}" ]]; then
   echo "Error: FDROID_DIR does not exist: ${FDROID_DIR}" >&2
@@ -38,22 +43,10 @@ if ! command -v fdroid >/dev/null 2>&1; then
   exit 2
 fi
 
-TERMLIB_ARG=()
-if [[ -n "${TERMLIB_VERSION}" ]]; then
-  TERMLIB_ARG+=("-PconnectbotTermlibVersion=${TERMLIB_VERSION}")
-fi
-
-KOTLIN_ARG=()
-if [[ -n "${KOTLIN_COMPILER_STRATEGY}" ]]; then
-  KOTLIN_ARG+=("-Pkotlin.compiler.execution.strategy=${KOTLIN_COMPILER_STRATEGY}")
-fi
-
 echo "Building googleRelease (${VERSION_NAME}, ${VERSION_CODE})…"
 ./gradlew --no-daemon :app:assembleGoogleRelease \
   -PforceVersionName="${VERSION_NAME}" \
-  -PforceVersionCode="${VERSION_CODE}" \
-  "${TERMLIB_ARG[@]}" \
-  "${KOTLIN_ARG[@]}"
+  -PforceVersionCode="${VERSION_CODE}"
 
 APK_PATH="app/build/outputs/apk/google/release/app-google-release-unsigned.apk"
 if [[ ! -f "${APK_PATH}" ]]; then
@@ -134,3 +127,4 @@ if [[ "${AFTEROID_SYNC:-}" == "1" ]]; then
 fi
 
 echo "Publish complete ✅"
+

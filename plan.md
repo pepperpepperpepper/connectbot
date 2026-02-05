@@ -4,6 +4,7 @@
 
 - For our purposes, the **correct ConnectBot** is the **Play Store–style UI baseline** (v1.9.13-era). Newer Compose-rewrite builds are not the target for testing/publishing.
 - **Publishing rule:** only publish the **google** flavor. Any “oss” flavor testing/publishing is considered **invalid** for our purposes.
+- **Release checkout:** publish from the legacy v1.9.13-era codebase at `~/connectbot-release` (blue UI). Do **not** publish from this newer checkout (black/Compose UI), even if using the `google` flavor.
 - Guard rails:
   - `scripts/run_gmsaas_release_gate.sh` and `scripts/run_gmsaas_android_test.sh` refuse non-google tasks.
   - Use `scripts/publish_afteroid_google.sh` for afteroid/F-Droid publishing (it verifies the APK is not `-oss` before publishing).
