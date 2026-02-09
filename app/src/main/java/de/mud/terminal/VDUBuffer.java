@@ -53,6 +53,13 @@ public class VDUBuffer {
   public int windowBase;                   /* where the start displaying */
   public int scrollMarker;               /* marks the last line inserted */
 
+  /**
+   * When enabled, prevents the viewport (windowBase) from auto-following output when new lines are
+   * inserted. This is used by ConnectBot to keep long-press selection stable while output is
+   * streaming (i.e., avoid "content moves under your finger" drift).
+   */
+  private boolean freezeWindowBase = false;
+
   private int topMargin;                               /* top scroll margin */
   private int bottomMargin;                         /* bottom scroll margin */
 
@@ -337,7 +344,7 @@ public class VDUBuffer {
     long abuf[][] = null;
     int offset = 0;
     int oldBase = screenBase;
-    final boolean wasAtBottom = (windowBase == screenBase);
+    final boolean wasAtBottom = (windowBase == screenBase) && !freezeWindowBase;
 
     int newScreenBase = screenBase;
     int newWindowBase = windowBase;
@@ -504,6 +511,18 @@ public class VDUBuffer {
       markLine(top, l - top + 1);
 
     display.updateScrollBar();
+  }
+
+  /**
+   * Freeze/unfreeze the viewport so {@code windowBase} stops following output while new lines are
+   * inserted.
+   */
+  public synchronized void setFreezeWindowBase(boolean freezeWindowBase) {
+    this.freezeWindowBase = freezeWindowBase;
+  }
+
+  public synchronized boolean isFreezeWindowBase() {
+    return freezeWindowBase;
   }
 
   /**

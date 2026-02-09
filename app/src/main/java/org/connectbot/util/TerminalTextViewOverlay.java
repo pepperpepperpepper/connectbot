@@ -57,6 +57,77 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	private int oldBufferHeight = 0;
 	private int oldScrollY = -1;
 
+	// When the user begins a long-press selection while the terminal is auto-scrolling (windowBase
+	// following screenBase), new output can move the content under their finger before the long
+	// press is recognized. That causes selection/copy to be "miscalibrated" relative to what is
+	// currently visible.
+	//
+	// To match common terminal UX, freeze the viewport (windowBase) while a selection is starting
+	// or active *if* the user started at the bottom.
+	private boolean freezeWindowBase = false;
+	private int frozenWindowBase = -1;
+	private boolean restoreBottomOnUnfreeze = false;
+
+	private void maybeBeginFreezeWindowBase() {
+		synchronized (terminalView.bridge.buffer) {
+			VDUBuffer vb = terminalView.bridge.getVDUBuffer();
+			int windowBase = vb.getWindowBase();
+			boolean atBottom = windowBase == vb.screenBase;
+			freezeWindowBase = atBottom;
+			frozenWindowBase = atBottom ? windowBase : -1;
+			restoreBottomOnUnfreeze = atBottom;
+			terminalView.bridge.buffer.setFreezeWindowBase(atBottom);
+		}
+	}
+
+	private void unfreezeWindowBaseIfNeeded() {
+		if (!freezeWindowBase) {
+			return;
+		}
+
+		synchronized (terminalView.bridge.buffer) {
+			VDUBuffer vb = terminalView.bridge.getVDUBuffer();
+			terminalView.bridge.buffer.setFreezeWindowBase(false);
+			if (restoreBottomOnUnfreeze) {
+				terminalView.bridge.buffer.setWindowBase(vb.screenBase);
+			}
+		}
+		terminalView.bridge.redraw();
+
+		freezeWindowBase = false;
+		frozenWindowBase = -1;
+		restoreBottomOnUnfreeze = false;
+	}
+
+	private void enforceFrozenWindowBaseIfNeeded() {
+		if (!freezeWindowBase) {
+			return;
+		}
+		if (!isTouchDown && selectionActionMode == null) {
+			return;
+		}
+
+		synchronized (terminalView.bridge.buffer) {
+			VDUBuffer vb = terminalView.bridge.getVDUBuffer();
+			int target = frozenWindowBase;
+			if (target < 0) {
+				return;
+			}
+			// Clamp to a valid range in case screenBase advances or scrollback saturates.
+			if (target > vb.screenBase) {
+				target = vb.screenBase;
+			}
+			if (target < 0) {
+				target = 0;
+			}
+
+			int current = vb.getWindowBase();
+			if (current != target) {
+				terminalView.bridge.buffer.setWindowBase(target);
+			}
+		}
+	}
+
 	public TerminalTextViewOverlay(Context context, TerminalView terminalView) {
 		super(context);
 
@@ -117,6 +188,8 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	 * rest of the buffer.
 	 */
 	public void onBufferChanged() {
+		enforceFrozenWindowBaseIfNeeded();
+
 		// While the user is holding their finger down waiting for a long-press selection to begin,
 		// avoid mutating the overlay (append/scroll). This can cancel long-press selection under
 		// continuous output.
@@ -239,10 +312,16 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	public boolean onTouchEvent(MotionEvent event) {
 		if (event.getAction() == MotionEvent.ACTION_DOWN) {
 			isTouchDown = true;
+			maybeBeginFreezeWindowBase();
 			// Selection may be beginning. Sync the TextView with the buffer.
 			refreshTextFromBuffer();
 		} else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
 			isTouchDown = false;
+			// If selection never started, release any freeze and return to bottom so auto-scroll
+			// resumes normally.
+			if (selectionActionMode == null) {
+				unfreezeWindowBaseIfNeeded();
+			}
 			final int windowBase;
 			synchronized (terminalView.bridge.buffer) {
 				windowBase = terminalView.bridge.buffer.getWindowBase();
@@ -451,6 +530,8 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 
 		@Override
 		public void onDestroyActionMode(ActionMode mode) {
+			TerminalTextViewOverlay.this.selectionActionMode = null;
+			unfreezeWindowBaseIfNeeded();
 		}
 	}
 }
