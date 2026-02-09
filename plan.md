@@ -146,10 +146,15 @@ Capture:
   - `TerminalTextViewOverlay.onPreDraw()` applies pending scroll using `super.scrollTo(...)` (no feedback loop into `windowBase`).
 - Harden scrollback behavior in termlib:
   - `VDUBuffer.insertLine(...)` now avoids auto-advancing `windowBase` while the user is in scrollback (`windowBase != screenBase`), and adjusts appropriately when dropping lines at the top.
+- Freeze the viewport while starting selection at the bottom (prevents “content moved under finger” drift):
+  - termlib: `VDUBuffer.setFreezeWindowBase(true)` makes `insertLine(...)` treat `windowBase==screenBase` as “not at bottom” so new output no longer auto-advances `windowBase`.
+  - ConnectBot: `TerminalTextViewOverlay` enables this on touch-down (only when the user started at bottom) and clears it when selection ends, returning to bottom so auto-scroll resumes.
 
 ### Current status
 
-- `org.connectbot.TerminalSelectionCopyTest` passes on GMSaaS Android 15 recipe `d212b329-aacd-4fe5-aa76-3480f12a6200` ✅ (including the new streaming test).
+- `org.connectbot.TerminalSelectionCopyTest` passes on GMSaaS Android 15 recipe `d212b329-aacd-4fe5-aa76-3480f12a6200` ✅ (including:
+  - `selectionCopyWorksWhileOutputIsStreamingAndUserIsScrolledUp`
+  - `selectionDoesNotDriftWhileStartingLongPressAtBottomDuringStreamingOutput`)
 - Confirmed by user on real-device/manual testing (Jan 26, 2026): the “gets lost after longer use” report no longer reproduces; automated repro + gate remain in place.
 
 ## Terminal bell / “task done” → Android notification (research + plan)
