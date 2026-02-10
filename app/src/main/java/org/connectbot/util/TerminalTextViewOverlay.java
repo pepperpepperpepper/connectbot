@@ -316,10 +316,17 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 
 	@Override
 	public void scrollTo(int x, int y) {
-		// Keep X pinned at 0. The terminal buffer is the source of truth for scrollback
-		// (windowBase); avoid feeding TextView-internal scrolling back into the buffer since it can
-		// race with streaming output and break selection/copy hit-testing.
-		super.scrollTo(0, y);
+		// Keep X pinned at 0 and keep Y aligned to the terminal buffer's scrollback (windowBase).
+		//
+		// TextView can call scrollTo() internally (selection/bring-into-view). If the overlay scrolls
+		// independently from the terminal bitmap, hit-testing becomes "miscalibrated" and users can
+		// end up selecting/copying the wrong text.
+		final int lineHeight = Math.max(1, getLineHeight());
+		final int windowBase;
+		synchronized (terminalView.bridge.buffer) {
+			windowBase = terminalView.bridge.buffer.getWindowBase();
+		}
+		super.scrollTo(0, windowBase * lineHeight);
 	}
 
 	@Override

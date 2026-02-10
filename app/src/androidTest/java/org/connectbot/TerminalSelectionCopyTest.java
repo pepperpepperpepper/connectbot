@@ -969,6 +969,95 @@ public class TerminalSelectionCopyTest {
 		}
 	}
 
+	@Test
+	public void selectionCopyRemainsCalibratedIfTextViewAttemptsToScrollDuringLongPress() {
+		Context testContext = ApplicationProvider.getApplicationContext();
+
+		SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
+		boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);
+		String wasScrollback = settings.getString(PreferenceConstants.SCROLLBACK, "140");
+
+		try {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+					.putString(PreferenceConstants.SCROLLBACK, "2000")
+					.commit();
+
+			startNewLocalConnectionWithoutIntents("Local");
+			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
+			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+
+			ensureSoftKeyboardVisibility(consoleActivity, true);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			final String token = "INTERNALSCROLLTOKEN";
+			final int rows = getTerminalRows(terminalView);
+			StringBuilder out = new StringBuilder();
+			for (int i = 0; i < rows + 40; i++) {
+				out.append("FILL").append(i).append("\r\n");
+			}
+			out.append(token).append("\r\n");
+			for (int i = 0; i < rows + 10; i++) {
+				out.append("AFTER").append(i).append("\r\n");
+			}
+			insertTerminalOutput(terminalView, "\r\n" + out.toString());
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			BufferPosition tokenPos = waitForTokenPosition(terminalView, token, 5000L);
+
+			// Put the token near the middle of the viewport so an accidental overlay scroll will
+			// definitely shift the touched row to different content.
+			final int targetBase = Math.max(0, tokenPos.row - (rows / 2));
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					synchronized (terminalView.bridge.buffer) {
+						terminalView.bridge.buffer.setWindowBase(targetBase);
+					}
+					TerminalTextViewOverlay overlay = (TerminalTextViewOverlay) terminalView.getChildAt(0);
+					overlay.refreshTextFromBuffer();
+				}
+			});
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			final int cols = getTerminalCols(terminalView);
+			final int targetCol = Math.min(Math.max(0, tokenPos.col + 2), Math.max(0, cols - 1));
+			final int baseNow = getWindowBase(terminalView);
+			final int screenRow = tokenPos.row - baseNow;
+			if (screenRow < 0 || screenRow >= rows) {
+				throw new AssertionError("Token not in viewport: screenRow=" + screenRow + " rows=" + rows);
+			}
+
+			float x = targetCol * terminalView.bridge.charWidth + terminalView.bridge.charWidth / 2f;
+			float y = screenRow * terminalView.bridge.charHeight + terminalView.bridge.charHeight / 2f;
+
+			ClipboardManager clipboard = (ClipboardManager) testContext.getSystemService(Context.CLIPBOARD_SERVICE);
+			clipboard.setText("");
+
+			// Simulate TextView-internal scrolling during long-press recognition. The overlay must not
+			// scroll independently from the terminal bitmap, otherwise hit-testing selects the wrong
+			// row/word.
+			longPressTerminalAtWithOverlayScrollAttempt(terminalView, x, y, terminalView.bridge.charHeight * 3);
+
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					terminalView.copyCurrentSelectionToClipboard();
+				}
+			});
+
+			String clip = clipboard.hasText() ? clipboard.getText().toString() : "";
+			assertThat(clip, equalTo(token));
+		} finally {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
+					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
+					.commit();
+		}
+	}
+
 	private enum ViewportAnchor { TOP, MIDDLE, BOTTOM }
 
 	private static Thread startBackgroundNumberStreamer(final TerminalView terminalView, final AtomicBoolean stop, final int count) {
@@ -1460,6 +1549,56 @@ public class TerminalSelectionCopyTest {
 				down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
 				root.dispatchTouchEvent(down);
 				down.recycle();
+			}
+		});
+
+		onView(withId(R.id.console_flip)).perform(loopMainThreadFor(android.view.ViewConfiguration.getLongPressTimeout() + 200L));
+
+		getInstrumentation().runOnMainSync(new Runnable() {
+			@Override
+			public void run() {
+				long upTime = SystemClock.uptimeMillis();
+				MotionEvent up = MotionEvent.obtain(downTime[0], upTime, MotionEvent.ACTION_UP, xRoot[0], yRoot[0], 0);
+				up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+				rootView[0].dispatchTouchEvent(up);
+				up.recycle();
+			}
+		});
+	}
+
+	private static void longPressTerminalAtWithOverlayScrollAttempt(final TerminalView terminalView, final float xPx, final float yPx,
+			final int scrollDyPx) {
+		final long[] downTime = new long[1];
+		final View[] rootView = new View[1];
+		final float[] xRoot = new float[1];
+		final float[] yRoot = new float[1];
+
+		getInstrumentation().runOnMainSync(new Runnable() {
+			@Override
+			public void run() {
+				Activity activity = (Activity) terminalView.getContext();
+				View root = activity.getWindow().getDecorView();
+
+				int[] rootLoc = new int[2];
+				int[] termLoc = new int[2];
+				root.getLocationOnScreen(rootLoc);
+				terminalView.getLocationOnScreen(termLoc);
+
+				float xScreen = termLoc[0] + xPx;
+				float yScreen = termLoc[1] + yPx;
+
+				rootView[0] = root;
+				xRoot[0] = xScreen - rootLoc[0];
+				yRoot[0] = yScreen - rootLoc[1];
+
+				downTime[0] = SystemClock.uptimeMillis();
+				MotionEvent down = MotionEvent.obtain(downTime[0], downTime[0], MotionEvent.ACTION_DOWN, xRoot[0], yRoot[0], 0);
+				down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+				root.dispatchTouchEvent(down);
+				down.recycle();
+
+				TerminalTextViewOverlay overlay = (TerminalTextViewOverlay) terminalView.getChildAt(0);
+				overlay.scrollTo(0, overlay.getScrollY() + scrollDyPx);
 			}
 		});
 
