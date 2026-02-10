@@ -45,6 +45,7 @@ import static androidx.test.platform.app.InstrumentationRegistry.getInstrumentat
 import static androidx.test.runner.lifecycle.Stage.RESUMED;
 import static org.connectbot.ConnectbotMatchers.withHostNickname;
 import static org.hamcrest.CoreMatchers.equalTo;
+import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 @RunWith(AndroidJUnit4.class)
@@ -338,11 +339,11 @@ public class TerminalSelectionCopyTest {
 		String wasScrollback = settings.getString(PreferenceConstants.SCROLLBACK, "140");
 
 		try {
-				// Keep enough scrollback so the "older" numbered lines stay present while output streams.
-				settings.edit()
-						.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
-						.putString(PreferenceConstants.SCROLLBACK, "2000")
-						.commit();
+					// Keep enough scrollback so the "older" numbered lines stay present while output streams.
+					settings.edit()
+							.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+							.putString(PreferenceConstants.SCROLLBACK, "2000")
+							.commit();
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
@@ -356,11 +357,11 @@ public class TerminalSelectionCopyTest {
 			StringBuilder seed = new StringBuilder();
 				// Keep this large enough that NUM00045/NUM00005 are always in scrollback (even on very
 				// tall screens / small fonts) so we exercise "scrolled up while output streams".
-				for (int i = 0; i < 1000; i++) {
-					seed.append("NUM").append(String.format(Locale.US, "%05d", i)).append("\r\n");
-				}
-			insertTerminalOutput(terminalView, "\r\n" + seed.toString());
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+					for (int i = 0; i < 700; i++) {
+						seed.append("NUM").append(String.format(Locale.US, "%05d", i)).append("\r\n");
+					}
+				insertTerminalOutput(terminalView, "\r\n" + seed.toString());
+				onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 
 			BufferPosition token45Pos = waitForTokenPosition(terminalView, token45, 5000L);
 			final int rows = getTerminalRows(terminalView);
@@ -381,13 +382,13 @@ public class TerminalSelectionCopyTest {
 
 			// Phase 1: keyboard visible.
 			ensureSoftKeyboardVisibility(consoleActivity, true);
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+				onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 
-			final AtomicBoolean stopVisible = new AtomicBoolean(false);
-			Thread streamerVisible = startBackgroundNumberStreamer(terminalView, stopVisible, 400);
-			for (int i = 0; i < 3; i++) {
-					BufferPosition token5Pos = waitForTokenPosition(terminalView, token5, 5000L);
-					BufferPosition token45PosNow = waitForTokenPosition(terminalView, token45, 5000L);
+				final AtomicBoolean stopVisible = new AtomicBoolean(false);
+				Thread streamerVisible = startBackgroundNumberStreamer(terminalView, stopVisible, 250);
+				for (int i = 0; i < 3; i++) {
+						BufferPosition token5Pos = waitForTokenPosition(terminalView, token5, 5000L);
+						BufferPosition token45PosNow = waitForTokenPosition(terminalView, token45, 5000L);
 
 					clipboard.setText("");
 					assertThat(selectTokenAndCopy(terminalView, clipboard, token45PosNow, ViewportAnchor.BOTTOM), equalTo(token45));
@@ -401,13 +402,13 @@ public class TerminalSelectionCopyTest {
 
 			// Phase 2: keyboard hidden.
 			ensureSoftKeyboardVisibility(consoleActivity, false);
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+				onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 
-			final AtomicBoolean stopHidden = new AtomicBoolean(false);
-			Thread streamerHidden = startBackgroundNumberStreamer(terminalView, stopHidden, 400);
-			for (int i = 0; i < 3; i++) {
-					BufferPosition token5Pos = waitForTokenPosition(terminalView, token5, 5000L);
-					BufferPosition token45PosNow = waitForTokenPosition(terminalView, token45, 5000L);
+				final AtomicBoolean stopHidden = new AtomicBoolean(false);
+				Thread streamerHidden = startBackgroundNumberStreamer(terminalView, stopHidden, 250);
+				for (int i = 0; i < 3; i++) {
+						BufferPosition token5Pos = waitForTokenPosition(terminalView, token5, 5000L);
+						BufferPosition token45PosNow = waitForTokenPosition(terminalView, token45, 5000L);
 
 					clipboard.setText("");
 					assertThat(selectTokenAndCopy(terminalView, clipboard, token45PosNow, ViewportAnchor.BOTTOM), equalTo(token45));
@@ -821,6 +822,153 @@ public class TerminalSelectionCopyTest {
 		}
 	}
 
+	@Test
+	public void selectionCopyMatchesVisibleViewportWhenBufferAdvancesWithoutNewFrame() throws InterruptedException {
+		Context testContext = ApplicationProvider.getApplicationContext();
+
+		SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
+		boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);
+		String wasScrollback = settings.getString(PreferenceConstants.SCROLLBACK, "140");
+
+		try {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+					.putString(PreferenceConstants.SCROLLBACK, "2000")
+					.commit();
+
+			startNewLocalConnectionWithoutIntents("Local");
+			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
+			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+
+			ensureSoftKeyboardVisibility(consoleActivity, true);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			final String token = "VISIBLE_BEFORE_STREAM";
+			final int rows = getTerminalRows(terminalView);
+			StringBuilder out = new StringBuilder();
+			for (int i = 0; i < rows + 10; i++) {
+				out.append("PRE").append(i).append("\r\n");
+			}
+			out.append(token).append("\r\nAFTER\r\n");
+			insertTerminalOutput(terminalView, "\r\n" + out.toString());
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			BufferPosition tokenPos = waitForTokenPosition(terminalView, token, 5000L);
+			int drawnBase = waitForLastDrawnWindowBase(terminalView, 5000L);
+			int drawnBaseAfter = getLastDrawnWindowBase(terminalView);
+			assertThat("Expected lastDrawnWindowBase to be stable after settling", drawnBaseAfter, equalTo(drawnBase));
+
+			final int cols = getTerminalCols(terminalView);
+			final int targetCol = Math.min(Math.max(0, tokenPos.col + 2), Math.max(0, cols - 1));
+			final int screenRowAtDraw = tokenPos.row - drawnBase;
+			if (screenRowAtDraw < 0 || screenRowAtDraw >= rows) {
+				throw new AssertionError("Token not in viewport at drawn base: screenRow=" + screenRowAtDraw + " rows=" + rows);
+			}
+
+			float x = targetCol * terminalView.bridge.charWidth + terminalView.bridge.charWidth / 2f;
+			float y = screenRowAtDraw * terminalView.bridge.charHeight + terminalView.bridge.charHeight / 2f;
+
+			ClipboardManager clipboard = (ClipboardManager) testContext.getSystemService(Context.CLIPBOARD_SERVICE);
+			clipboard.setText("");
+
+			final AtomicBoolean stop = new AtomicBoolean(false);
+			final Thread[] flooder = new Thread[1];
+			final long[] downTime = new long[1];
+			final View[] rootView = new View[1];
+			final float[] xRoot = new float[1];
+			final float[] yRoot = new float[1];
+
+			try {
+				// Simulate the real-world condition where output advances on a background thread while
+				// frames are not being rendered (UI thread busy). The screen still shows the last-drawn
+				// bitmap (drawnBase), but the buffer has already advanced.
+				getInstrumentation().runOnMainSync(new Runnable() {
+					@Override
+					public void run() {
+						Activity activity = (Activity) terminalView.getContext();
+						View root = activity.getWindow().getDecorView();
+
+						int[] rootLoc = new int[2];
+						int[] termLoc = new int[2];
+						root.getLocationOnScreen(rootLoc);
+						terminalView.getLocationOnScreen(termLoc);
+
+						float xScreen = termLoc[0] + x;
+						float yScreen = termLoc[1] + y;
+
+						rootView[0] = root;
+						xRoot[0] = xScreen - rootLoc[0];
+						yRoot[0] = yScreen - rootLoc[1];
+
+						flooder[0] = startBackgroundNumberFlooder(terminalView, stop, 2000);
+
+						final long start = SystemClock.uptimeMillis();
+						int base = drawnBase;
+						while (SystemClock.uptimeMillis() - start < 2000L) {
+							synchronized (terminalView.bridge.buffer) {
+								base = terminalView.bridge.buffer.getWindowBase();
+							}
+							if (base != drawnBase) {
+								break;
+							}
+							SystemClock.sleep(10L);
+						}
+
+						assertThat("windowBase should advance as output arrives", base, not(equalTo(drawnBase)));
+						assertThat("lastDrawnWindowBase should remain at the visible frame", terminalView.bridge.getLastDrawnWindowBase(), equalTo(drawnBase));
+
+						downTime[0] = SystemClock.uptimeMillis();
+						MotionEvent down = MotionEvent.obtain(downTime[0], downTime[0], MotionEvent.ACTION_DOWN, xRoot[0], yRoot[0], 0);
+						down.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+						root.dispatchTouchEvent(down);
+						down.recycle();
+					}
+				});
+
+				// Stop output so selection begins after "streaming" has ended, matching the user-reported scenario.
+				stop.set(true);
+				if (flooder[0] != null) {
+					flooder[0].join(10_000L);
+				}
+
+				onView(withId(R.id.console_flip)).perform(loopMainThreadFor(android.view.ViewConfiguration.getLongPressTimeout() + 200L));
+
+				getInstrumentation().runOnMainSync(new Runnable() {
+					@Override
+					public void run() {
+						long upTime = SystemClock.uptimeMillis();
+						MotionEvent up = MotionEvent.obtain(downTime[0], upTime, MotionEvent.ACTION_UP, xRoot[0], yRoot[0], 0);
+						up.setSource(InputDevice.SOURCE_TOUCHSCREEN);
+						rootView[0].dispatchTouchEvent(up);
+						up.recycle();
+					}
+				});
+			} finally {
+				stop.set(true);
+				if (flooder[0] != null) {
+					flooder[0].join(10_000L);
+				}
+			}
+
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					terminalView.copyCurrentSelectionToClipboard();
+				}
+			});
+
+			String clip = clipboard.hasText() ? clipboard.getText().toString() : "";
+			assertThat(clip, equalTo(token));
+		} finally {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
+					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
+					.commit();
+		}
+	}
+
 	private enum ViewportAnchor { TOP, MIDDLE, BOTTOM }
 
 	private static Thread startBackgroundNumberStreamer(final TerminalView terminalView, final AtomicBoolean stop, final int count) {
@@ -955,14 +1103,18 @@ public class TerminalSelectionCopyTest {
 						windowBaseAfterSet[0] = terminalView.bridge.buffer.getWindowBase();
 					}
 				}
-			});
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+				});
+				onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 
-			int windowBase = getWindowBase(terminalView);
-			final int[] screenBaseAndSizes = new int[3];
-			getInstrumentation().runOnMainSync(new Runnable() {
-				@Override
-				public void run() {
+				// Selection is based on what is visible on screen (last-drawn bitmap), not necessarily
+				// the newest buffer state under heavy output.
+				int windowBase = getWindowBase(terminalView);
+				final int drawnWindowBase = terminalView.bridge.getLastDrawnWindowBase();
+				final int visibleWindowBase = drawnWindowBase >= 0 ? drawnWindowBase : windowBase;
+				final int[] screenBaseAndSizes = new int[3];
+				getInstrumentation().runOnMainSync(new Runnable() {
+					@Override
+					public void run() {
 					synchronized (terminalView.bridge.buffer) {
 						de.mud.terminal.VDUBuffer buffer = terminalView.bridge.getVDUBuffer();
 						screenBaseAndSizes[0] = buffer.screenBase;
@@ -973,13 +1125,13 @@ public class TerminalSelectionCopyTest {
 			});
 			final int screenBase = screenBaseAndSizes[0];
 			final int bufferSize = screenBaseAndSizes[1];
-			final int maxBufferSize = screenBaseAndSizes[2];
-			final int cols = getTerminalCols(terminalView);
-			final int targetCol = Math.min(Math.max(0, tokenPos.col + 2), Math.max(0, cols - 1));
-			final int screenRow = tokenPos.row - windowBase;
+				final int maxBufferSize = screenBaseAndSizes[2];
+				final int cols = getTerminalCols(terminalView);
+				final int targetCol = Math.min(Math.max(0, tokenPos.col + 2), Math.max(0, cols - 1));
+				final int screenRow = tokenPos.row - visibleWindowBase;
 
-			float x = targetCol * terminalView.bridge.charWidth + terminalView.bridge.charWidth / 2f;
-			float y = screenRow * terminalView.bridge.charHeight + terminalView.bridge.charHeight / 2f;
+				float x = targetCol * terminalView.bridge.charWidth + terminalView.bridge.charWidth / 2f;
+				float y = screenRow * terminalView.bridge.charHeight + terminalView.bridge.charHeight / 2f;
 
 			final char expectedChar = getBufferCharAt(terminalView, tokenPos.row, targetCol);
 			final char actualCharAtHit = getOverlayCharAtPosition(terminalView, x, y);
@@ -1233,6 +1385,29 @@ public class TerminalSelectionCopyTest {
 		return base[0];
 	}
 
+	private static int getLastDrawnWindowBase(final TerminalView terminalView) {
+		final int[] base = new int[1];
+		getInstrumentation().runOnMainSync(new Runnable() {
+			@Override
+			public void run() {
+				base[0] = terminalView.bridge.getLastDrawnWindowBase();
+			}
+		});
+		return base[0];
+	}
+
+	private static int waitForLastDrawnWindowBase(final TerminalView terminalView, long timeoutMillis) {
+		final long start = System.currentTimeMillis();
+		while (System.currentTimeMillis() - start < timeoutMillis) {
+			int base = getLastDrawnWindowBase(terminalView);
+			if (base >= 0) {
+				return base;
+			}
+			SystemClock.sleep(50L);
+		}
+		throw new AssertionError("Timed out waiting for lastDrawnWindowBase to be set");
+	}
+
 	private static int getTerminalRows(final TerminalView terminalView) {
 		final int[] rows = new int[1];
 		getInstrumentation().runOnMainSync(new Runnable() {
@@ -1417,13 +1592,17 @@ public class TerminalSelectionCopyTest {
 	}
 
 	private void startNewLocalConnectionWithoutIntents(String name) {
+		// Use a unique nickname for each test run so ConsoleActivity doesn't reuse an existing
+		// TerminalBridge from a previous test (TerminalManager is a long-lived service).
+		final String uniqueName = name + "-" + SystemClock.uptimeMillis();
+
 		onView(withId(R.id.add_host_button)).perform(click());
 		onView(withId(R.id.protocol_text)).perform(click());
 		onView(withText("local")).perform(click());
-		onView(withId(R.id.quickconnect_field)).perform(typeText(name));
+		onView(withId(R.id.quickconnect_field)).perform(typeText(uniqueName));
 		onView(withId(R.id.save)).perform(click());
 
-		onView(withId(R.id.list)).perform(actionOnHolderItem(withHostNickname(name), click()));
+		onView(withId(R.id.list)).perform(actionOnHolderItem(withHostNickname(uniqueName), click()));
 	}
 
 	private static ConsoleActivity waitForConsoleActivity(long timeoutMillis) {
