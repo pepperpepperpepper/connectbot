@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.9` (`10914010`) to afteroid/F-Droid repo (Jan 30, 2026).
+- Published **google** flavor `1.9.13.14` (`10914015`) to afteroid/F-Droid repo (Feb 10, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -116,6 +116,11 @@ Capture:
 
 - Published **google** flavor `1.9.13.8` (`10914009`) to afteroid/F-Droid repo, updated metadata, and invalidated CloudFront (`I6SKMF341PCYAMFNOOR9S77XWY`).
 - Published **google** flavor `1.9.13.9` (`10914010`) to afteroid/F-Droid repo, updated metadata, and invalidated CloudFront (`I6G3XKPI2KEYP07OKMU3263EXS`).
+
+## Afteroid publish (Feb 10, 2026)
+
+- Published **google** flavor `1.9.13.13` (`10914014`) to afteroid/F-Droid repo.
+- Published **google** flavor `1.9.13.14` (`10914015`) to afteroid/F-Droid repo, updated metadata, and invalidated CloudFront (`I5YJ8DL3PJCJXEMNDHF038HM9A`).
 
 ## Follow-up resolution (Jan 26, 2026)
 
