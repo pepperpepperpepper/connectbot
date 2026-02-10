@@ -156,7 +156,10 @@ Capture:
   - `selectionCopyWorksWhileOutputIsStreamingAndUserIsScrolledUp`
   - `selectionDoesNotDriftWhileStartingLongPressAtBottomDuringStreamingOutput`)
 - Confirmed by user on real-device/manual testing (Jan 26, 2026): the “gets lost after longer use” report no longer reproduces; automated repro + gate remain in place.
-- ⚠️ New user report (Feb 10, 2026): selection/copy still feels “miscalibrated” intermittently (better than before; avoid regressions). Not reproduced yet by instrumentation; next step is to capture a concrete repro command/gesture + scrollback setting and encode as a failing test.
+- ⚠️ New user report (Feb 10, 2026): selection/copy still feels “miscalibrated” intermittently (better than before; avoid regressions).
+  - Hypothesis: under heavy output, the buffer can advance **between frames**; the user taps what they *see* (last-drawn bitmap), but selection reads a *newer* `VDUBuffer` state.
+  - Fix: `TerminalBridge` records `lastDrawnWindowBase/screenBase`; `TerminalTextViewOverlay` snaps `VDUBuffer.windowBase` to the last-drawn viewport at `ACTION_DOWN` so selection matches what’s on-screen.
+  - Regression test: `TerminalSelectionCopyTest#selectionCopyMatchesVisibleViewportWhenBufferAdvancesWithoutNewFrame` (passes on GMSaaS Android 15 recipe `d212b329-aacd-4fe5-aa76-3480f12a6200`).
 
 ### Additional stress coverage added (Feb 10, 2026)
 
