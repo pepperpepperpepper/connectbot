@@ -156,6 +156,14 @@ Capture:
   - `selectionCopyWorksWhileOutputIsStreamingAndUserIsScrolledUp`
   - `selectionDoesNotDriftWhileStartingLongPressAtBottomDuringStreamingOutput`)
 - Confirmed by user on real-device/manual testing (Jan 26, 2026): the “gets lost after longer use” report no longer reproduces; automated repro + gate remain in place.
+- ⚠️ New user report (Feb 10, 2026): selection/copy still feels “miscalibrated” intermittently (better than before; avoid regressions). Not reproduced yet by instrumentation; next step is to capture a concrete repro command/gesture + scrollback setting and encode as a failing test.
+
+### Additional stress coverage added (Feb 10, 2026)
+
+- Added tests to try to reproduce remaining “miscalibrated selection” reports under more pathological buffer behavior:
+  - `selectionCopyRemainsCalibratedWhileStartingLongPressAtBottomWhenScrollbackIsSaturated`
+  - `selectionCopyRemainsCalibratedWhileStartingLongPressInScrollbackDuringDroppingOutput`
+  - `selectionCopyRemainsCalibratedWhileSelectionIsActiveDuringStreamingOutput`
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
