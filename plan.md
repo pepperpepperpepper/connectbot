@@ -160,6 +160,10 @@ Capture:
   - Hypothesis: under heavy output, the buffer can advance **between frames**; the user taps what they *see* (last-drawn bitmap), but selection reads a *newer* `VDUBuffer` state.
   - Fix: `TerminalBridge` records `lastDrawnWindowBase/screenBase`; `TerminalTextViewOverlay` snaps `VDUBuffer.windowBase` to the last-drawn viewport at `ACTION_DOWN` so selection matches what’s on-screen.
   - Regression test: `TerminalSelectionCopyTest#selectionCopyMatchesVisibleViewportWhenBufferAdvancesWithoutNewFrame` (passes on GMSaaS Android 15 recipe `d212b329-aacd-4fe5-aa76-3480f12a6200`).
+  - Follow-up report: selection is OK immediately after app load, but becomes “miscalibrated” after more use (tmux or no tmux).
+    - Hypothesis: `TextView` can call `scrollTo()` internally (selection/bring-into-view). Since we intentionally stopped feeding overlay scrolling back into `VDUBuffer.windowBase`, any internal overlay scroll would desync the overlay grid from the terminal bitmap and break hit-testing.
+    - Fix: clamp `TerminalTextViewOverlay.scrollTo()` so the overlay can’t scroll independently from `windowBase`.
+    - Regression test: `TerminalSelectionCopyTest#selectionCopyRemainsCalibratedIfTextViewAttemptsToScrollDuringLongPress` (passes on GMSaaS Android 15 recipe `d212b329-aacd-4fe5-aa76-3480f12a6200`).
 
 ### Additional stress coverage added (Feb 10, 2026)
 
