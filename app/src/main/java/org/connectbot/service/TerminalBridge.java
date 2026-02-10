@@ -109,6 +109,12 @@ public class TerminalBridge implements VDUDisplay {
 	public int charHeight = -1;
 	private int charTop = -1;
 
+	// Snapshot of the viewport used for the most recent draw. The terminal buffer can advance
+	// faster than frames are rendered under heavy output; selection should match what the user
+	// actually sees on screen (the last-drawn bitmap), not necessarily the newest buffer state.
+	private volatile int lastDrawnWindowBase = -1;
+	private volatile int lastDrawnScreenBase = -1;
+
 	private float fontSizeDp = -1;
 
 	private final List<FontSizeChangedListener> fontSizeChangedListeners;
@@ -824,8 +830,21 @@ public class TerminalBridge implements VDUDisplay {
 
 			// reset entire-buffer flags
 			buffer.update[0] = false;
+
+			// Record the viewport that was drawn so selection can align to the visible bitmap even
+			// if the buffer advances before the next frame is rendered.
+			lastDrawnWindowBase = buffer.windowBase;
+			lastDrawnScreenBase = buffer.screenBase;
 		}
 		fullRedraw = false;
+	}
+
+	public int getLastDrawnWindowBase() {
+		return lastDrawnWindowBase;
+	}
+
+	public int getLastDrawnScreenBase() {
+		return lastDrawnScreenBase;
 	}
 
 	@Override

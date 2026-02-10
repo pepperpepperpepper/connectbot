@@ -71,10 +71,24 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	private void maybeBeginFreezeWindowBase() {
 		synchronized (terminalView.bridge.buffer) {
 			VDUBuffer vb = terminalView.bridge.getVDUBuffer();
-			int windowBase = vb.getWindowBase();
-			boolean atBottom = windowBase == vb.screenBase;
+			final int drawnWindowBase = terminalView.bridge.getLastDrawnWindowBase();
+			final int drawnScreenBase = terminalView.bridge.getLastDrawnScreenBase();
+			final boolean hasDrawnViewport = drawnWindowBase >= 0 && drawnScreenBase >= 0;
+
+			// If the buffer advanced since the last frame was rendered (common under heavy output),
+			// selection should match what the user sees (the last-drawn bitmap), not the newest
+			// buffer state.
+			int visibleWindowBase = hasDrawnViewport ? drawnWindowBase : vb.getWindowBase();
+			if (visibleWindowBase != vb.getWindowBase()) {
+				terminalView.bridge.buffer.setWindowBase(visibleWindowBase);
+				visibleWindowBase = vb.getWindowBase(); // clamp
+			}
+
+			boolean atBottom = hasDrawnViewport ? (drawnWindowBase == drawnScreenBase)
+					: (visibleWindowBase == vb.screenBase);
+
 			freezeWindowBase = atBottom;
-			frozenWindowBase = atBottom ? windowBase : -1;
+			frozenWindowBase = atBottom ? visibleWindowBase : -1;
 			restoreBottomOnUnfreeze = atBottom;
 			terminalView.bridge.buffer.setFreezeWindowBase(atBottom);
 		}
