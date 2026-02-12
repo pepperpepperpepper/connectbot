@@ -49,13 +49,11 @@ import android.os.IBinder;
 import android.os.StrictMode;
 import android.preference.PreferenceManager;
 import androidx.annotation.Nullable;
-import com.google.android.material.tabs.TabLayout;
 import androidx.core.app.ActivityCompat;
 import androidx.core.view.MenuItemCompat;
 import androidx.viewpager.widget.PagerAdapter;
 import androidx.appcompat.app.ActionBar;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
 import android.text.ClipboardManager;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -99,8 +97,6 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private static final String STATE_SELECTED_URI = "selectedUri";
 
 	protected TerminalViewPager pager = null;
-	protected TabLayout tabs = null;
-	protected Toolbar toolbar = null;
 	@Nullable
 	protected TerminalManager bound = null;
 	protected TerminalPagerAdapter adapter = null;
@@ -491,8 +487,6 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 		inflater = LayoutInflater.from(this);
 
-		toolbar = findViewById(R.id.toolbar);
-
 		pager = findViewById(R.id.console_flip);
 		pager.addOnPageChangeListener(
 				new TerminalViewPager.SimpleOnPageChangeListener() {
@@ -687,10 +681,6 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 					}
 				});
 
-		tabs = findViewById(R.id.tabs);
-		if (tabs != null)
-			setupTabLayoutWithViewPager();
-
 		pager.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View v) {
@@ -726,32 +716,6 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		KeyRepeater keyRepeater = new KeyRepeater(keyRepeatHandler, view);
 		view.setOnClickListener(keyRepeater);
 		view.setOnTouchListener(keyRepeater);
-	}
-
-	/**
-	 * Ties the {@link TabLayout} to the {@link TerminalViewPager}.
-	 *
-	 * <p>This method will:
-	 * <ul>
-	 *     <li>Add a {@link TerminalViewPager.OnPageChangeListener} that will forward events to
-	 *     this TabLayout.</li>
-	 *     <li>Populate the TabLayout's tabs from the ViewPager's {@link PagerAdapter}.</li>
-	 *     <li>Set our {@link TabLayout.OnTabSelectedListener} which will forward
-	 *     selected events to the ViewPager</li>
-	 * </ul>
-	 * </p>
-	 */
-	public void setupTabLayoutWithViewPager() {
-		tabs.setTabsFromPagerAdapter(adapter);
-		pager.addOnPageChangeListener(new TabLayout.TabLayoutOnPageChangeListener(tabs));
-		tabs.setOnTabSelectedListener(new TabLayout.ViewPagerOnTabSelectedListener(pager));
-
-		if (adapter.getCount() > 0) {
-			final int curItem = pager.getCurrentItem();
-			if (tabs.getSelectedTabPosition() != curItem) {
-				tabs.getTabAt(curItem).select();
-			}
-		}
 	}
 
 	/**
@@ -1321,15 +1285,6 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 				return null;
 			}
 			return bridges.get(position);
-		}
-
-		@Override
-		public void notifyDataSetChanged() {
-			super.notifyDataSetChanged();
-			if (tabs != null) {
-				toolbar.setVisibility(this.getCount() > 1 ? View.VISIBLE : View.GONE);
-				tabs.setTabsFromPagerAdapter(this);
-			}
 		}
 
 		@Override
