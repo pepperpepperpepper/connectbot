@@ -47,6 +47,7 @@ import static org.connectbot.ConnectbotMatchers.withHostNickname;
 import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThanOrEqualTo;
 
 @RunWith(AndroidJUnit4.class)
 public class TerminalSelectionCopyTest {
@@ -1263,19 +1264,53 @@ public class TerminalSelectionCopyTest {
 		}
 
 	private static void assertOverlayAlignedWithTerminalGrid(final TerminalView terminalView) {
+		waitForOverlayFontAndMetrics(terminalView, 5000L);
+
 		final int[] overlayLineHeight = new int[1];
 		final int[] bridgeCharHeight = new int[1];
+		final int[] overlayBaseline = new int[1];
+		final int[] expectedBaseline = new int[1];
 
-		getInstrumentation().runOnMainSync(new Runnable() {
-			@Override
-			public void run() {
-				TerminalTextViewOverlay overlay = (TerminalTextViewOverlay) terminalView.getChildAt(0);
-				overlayLineHeight[0] = overlay.getLineHeight();
-				bridgeCharHeight[0] = terminalView.bridge.charHeight;
+		final long start = SystemClock.uptimeMillis();
+		while (SystemClock.uptimeMillis() - start < 5000L) {
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					TerminalTextViewOverlay overlay = (TerminalTextViewOverlay) terminalView.getChildAt(0);
+					overlay.refreshTextFromBuffer();
+					overlayLineHeight[0] = overlay.getLineHeight();
+					bridgeCharHeight[0] = terminalView.bridge.charHeight;
+
+					android.text.Layout layout = overlay.getLayout();
+					if (layout != null && layout.getLineCount() > 0) {
+						int windowBase = terminalView.bridge.buffer.getWindowBase();
+						int lineIndex = Math.min(Math.max(0, windowBase), layout.getLineCount() - 1);
+						overlayBaseline[0] = overlay.getExtendedPaddingTop()
+								+ layout.getLineBaseline(lineIndex)
+								- overlay.getScrollY();
+					} else {
+						overlayBaseline[0] = Integer.MIN_VALUE;
+					}
+					expectedBaseline[0] = -terminalView.bridge.getCharTop();
+				}
+			});
+
+			if (overlayBaseline[0] != Integer.MIN_VALUE) {
+				break;
 			}
-		});
+
+			SystemClock.sleep(50L);
+		}
+
+		if (overlayBaseline[0] == Integer.MIN_VALUE) {
+			throw new AssertionError("Timed out waiting for overlay layout");
+		}
 
 		assertThat("Overlay line height must match terminal char height", overlayLineHeight[0], equalTo(bridgeCharHeight[0]));
+		assertThat(
+				"Overlay baseline must match terminal baseline",
+				Math.abs(overlayBaseline[0] - expectedBaseline[0]),
+				lessThanOrEqualTo(1));
 	}
 
 	private static void assertOverlayScrollAlignedWithWindowBase(final TerminalView terminalView) {

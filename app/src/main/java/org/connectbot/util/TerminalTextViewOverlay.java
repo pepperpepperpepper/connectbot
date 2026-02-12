@@ -150,7 +150,11 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 
 		setTextColor(Color.TRANSPARENT);
 		setTypeface(Typeface.MONOSPACE);
-		setIncludeFontPadding(false);
+		// Keep font padding enabled so TextView uses top/bottom font metrics when positioning
+		// baselines. The terminal bitmap grid uses Paint.getFontMetrics().top for baseline
+		// placement, so disabling font padding (ascent/descent) causes the selection highlight
+		// to visually drift between lines even when hit-testing is correct.
+		setIncludeFontPadding(true);
 		setPadding(0, 0, 0, 0);
 		setHorizontallyScrolling(true);
 		setTextIsSelectable(true);

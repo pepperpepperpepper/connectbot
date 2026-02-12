@@ -574,6 +574,14 @@ public class TerminalBridge implements VDUDisplay {
 	}
 
 	/**
+	 * @return the {@code charTop} value used when drawing text. The baseline Y for row {@code l} is
+	 *         {@code (l * charHeight) - charTop}.
+	 */
+	public int getCharTop() {
+		return charTop;
+	}
+
+	/**
 	 * Add an {@link FontSizeChangedListener} to the list of listeners for this
 	 * bridge.
 	 *
