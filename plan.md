@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.14` (`10914015`) to afteroid/F-Droid repo (Feb 10, 2026).
+- Published **google** flavor `1.9.13.15` (`10914016`) to afteroid/F-Droid repo (Feb 12, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -176,6 +176,12 @@ Capture:
   - `selectionCopyRemainsCalibratedWhileStartingLongPressAtBottomWhenScrollbackIsSaturated`
   - `selectionCopyRemainsCalibratedWhileStartingLongPressInScrollbackDuringDroppingOutput`
   - `selectionCopyRemainsCalibratedWhileSelectionIsActiveDuringStreamingOutput`
+
+## Foldables / Pixel Fold hinge resize (bug)
+
+- User report: on Google Pixel Fold, **unfolding** (window size class change) can show **“No hosts currently connected”** instead of rendering existing active sessions; folding back restores the sessions list/view.
+- Fix (v1.9.13 build): removed the `layout-large/act_console.xml` “tablet” console layout so fold/unfold cannot switch into an untested alternate UI path; the console uses the standard layout on all screen sizes.
+- Published in: `1.9.13.15` (`10914016`) (Feb 12, 2026).
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
