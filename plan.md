@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.15` (`10914016`) to afteroid/F-Droid repo (Feb 12, 2026).
+- Published **google** flavor `1.9.13.16` (`10914017`) to afteroid/F-Droid repo (Feb 12, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -82,7 +82,8 @@ Capture:
 ### Fixes applied in v1.9.13 build
 
 - Overlay `TextView` hardened to behave like a grid:
-  - `setIncludeFontPadding(false)`, `setPadding(0,0,0,0)`
+  - `setIncludeFontPadding(true)` (match terminal baseline; prevents highlight drifting between lines)
+  - `setPadding(0,0,0,0)`
   - `setHorizontallyScrolling(true)` (prevent wrapping)
 - `TerminalView#onFontSizeChanged` now also calibrates the overlay horizontally:
   - sets `fakeBoldText` to match terminal paint
