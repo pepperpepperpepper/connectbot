@@ -476,6 +476,7 @@
 	<string name="disconnect_all_neg">"Cancel"</string>
 
 	<string name="terminal_no_hosts_connected">"No hosts currently connected"</string>
+	<string name="terminal_restoring_sessions">"Restoring sessions\u2026"</string>
 
 	<!-- Displayed in terminal when attempting to connect to a host. The first two
 	     variables are host:port and the third is the protocol (e.g., SSH) -->

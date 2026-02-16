@@ -142,10 +142,50 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 	private ImageView mKeyboardButton;
 
+	private boolean pagerRepopulateQueued = false;
+
 	@Nullable private ActionBar actionBar;
 	private boolean inActionBarMenu = false;
 	private boolean titleBarHide;
 	private boolean keyboardAlwaysVisible = false;
+
+	private void queueEnsurePagerPopulated() {
+		if (pagerRepopulateQueued || pager == null) {
+			return;
+		}
+		pagerRepopulateQueued = true;
+		pager.post(new Runnable() {
+			@Override
+			public void run() {
+				pagerRepopulateQueued = false;
+				ensurePagerPopulated();
+				updateEmptyVisible();
+			}
+		});
+	}
+
+	private void ensurePagerPopulated() {
+		if (pager == null || adapter == null) {
+			return;
+		}
+
+		final int count = adapter.getCount();
+		if (count <= 0) {
+			return;
+		}
+
+		// We've observed that on some foldable/resizable-window transitions (especially when
+		// toggling IME visibility after a screen-size change) ViewPager can transiently drop all
+		// child views even though the underlying session list still exists.
+		//
+		// If that happens, the user sees an empty black console. Force ViewPager to recreate its
+		// pages from the existing adapter.
+		if (pager.getChildCount() == 0) {
+			final int current = Math.min(pager.getCurrentItem(), count - 1);
+			pager.setAdapter(adapter);
+			pager.setCurrentItem(current, false);
+		}
+	}
 
 	private final ServiceConnection connection = new ServiceConnection() {
 		@Override
@@ -593,6 +633,10 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 					InputMethodManager.SHOW_FORCED, 0);
 				terminal.requestFocus();
 				hideEmulatedKeys();
+
+				// The IME show/hide transition can race with ViewPager layout on foldables. Ensure the
+				// pager is populated after the resize settles.
+				queueEnsurePagerPopulated();
 			}
 		});
 
@@ -710,6 +754,10 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 						mKeyboardButton.setImageResource(R.drawable.ic_keyboard);
 						mKeyboardButton.setContentDescription(getResources().getText(R.string.image_description_show_keyboard));
 					}
+
+					// If a resize/IME transition caused the pager to temporarily lose its child views,
+					// restore them (otherwise the user sees a blank console).
+					queueEnsurePagerPopulated();
 				}
 			});
 	}
@@ -1079,8 +1127,29 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	}
 
 	protected void updateEmptyVisible() {
-		// update visibility of empty status message
-		empty.setVisibility((adapter.getCount() == 0) ? View.VISIBLE : View.GONE);
+		if (empty == null || pager == null || adapter == null) {
+			return;
+		}
+
+		final int sessionCount = adapter.getCount();
+		final int pageCount = pager.getChildCount();
+
+		if (sessionCount == 0) {
+			empty.setText(R.string.terminal_no_hosts_connected);
+			empty.setVisibility(View.VISIBLE);
+			return;
+		}
+
+		if (pageCount == 0) {
+			// We have active sessions but nothing is being rendered. Try to repopulate the pager and
+			// show a non-misleading placeholder while we recover.
+			empty.setText(R.string.terminal_restoring_sessions);
+			empty.setVisibility(View.VISIBLE);
+			queueEnsurePagerPopulated();
+			return;
+		}
+
+		empty.setVisibility(View.GONE);
 	}
 
 	/**
@@ -1169,6 +1238,8 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 			mKeyboardButton.setVisibility(bound.hardKeyboardHidden ? View.VISIBLE : View.GONE);
 		}
+
+		queueEnsurePagerPopulated();
 	}
 
 	/**
