@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.18` (`10914019`) to afteroid/F-Droid repo (Feb 16, 2026).
+- Published **google** flavor `1.9.13.19` (`10914020`) to afteroid/F-Droid repo (Feb 16, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -197,6 +197,13 @@ Capture:
   - Show a non-misleading placeholder message (“Restoring sessions…”) while recovery happens (instead of a blank screen).
   - Covered indirectly by the existing foldable regression test.
 - Published in: `1.9.13.18` (`10914019`) (Feb 16, 2026).
+
+- Follow-up user report (foldables): after unfolding (display resize), hiding the keyboard via ConnectBot’s keyboard toggle could leave the session connected but render the **terminal bitmap as all-black**.
+- Fix (v1.9.13 build):
+  - `TerminalBridge.parentChanged()` now calls `onDraw()` immediately after setting `fullRedraw=true`, so the backing bitmap is repainted even if the next invalidate/draw frame is dropped during a resize/IME transition.
+  - `ConsoleActivity.ensurePagerPopulated()` was re-simplified so it only rebinds the adapter when `ViewPager` truly has **zero** child views (avoids view churn that can break selection calibration).
+  - Regression test: `TerminalSelectionCopyTest#consoleStillRendersAfterDisplayResizeAndKeyboardToggle` (uses `wm size …` to simulate fold/unfold + IME hide, then asserts non-black pixels).
+- Published in: `1.9.13.19` (`10914020`) (Feb 16, 2026).
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
