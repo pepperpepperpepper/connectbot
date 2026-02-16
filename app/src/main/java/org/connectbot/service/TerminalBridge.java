@@ -695,6 +695,9 @@ public class TerminalBridge implements VDUDisplay {
 
 		// force full redraw with new buffer size
 		fullRedraw = true;
+		// Paint the buffer into the backing bitmap immediately. Some resizable-window/IME transitions
+		// can drop draw frames; without this, the bitmap can remain black until the next invalidate.
+		onDraw();
 		redraw();
 
 		parent.notifyUser(String.format("%d x %d", columns, rows));

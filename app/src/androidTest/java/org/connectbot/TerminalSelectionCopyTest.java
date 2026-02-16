@@ -13,6 +13,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.graphics.Bitmap;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
@@ -1020,6 +1021,77 @@ public class TerminalSelectionCopyTest {
 	}
 
 	@Test
+	public void consoleStillRendersAfterDisplayResizeAndKeyboardToggle() throws Exception {
+		Context testContext = ApplicationProvider.getApplicationContext();
+
+		SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
+		boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);
+		String wasScrollback = settings.getString(PreferenceConstants.SCROLLBACK, "140");
+
+		try {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+					.putString(PreferenceConstants.SCROLLBACK, STRESS_SCROLLBACK_LINES)
+					.commit();
+
+			startNewLocalConnectionWithoutIntents("Local");
+			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
+
+			ensureSoftKeyboardVisibility(consoleActivity, true);
+
+			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			final String token = "RENDERTOKEN";
+			insertTerminalOutput(terminalView, "\r\n" + token + "\r\n");
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			BufferPosition tokenPos = waitForTokenPosition(terminalView, token, 5000L);
+			scrollViewportToRow(terminalView, tokenPos.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(terminalView, tokenPos, token);
+
+			// Simulate foldable resize/unfold.
+			execShellCommand("wm size 1200x2000");
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(1500L));
+
+			ConsoleActivity afterResize = waitForConsoleActivity(10000L);
+			TerminalView afterResizeTerminalView = afterResize.adapter.getCurrentTerminalView();
+			if (afterResizeTerminalView == null) {
+				afterResizeTerminalView = afterResize.findViewById(R.id.terminal_view);
+			}
+
+			BufferPosition tokenPosAfterResize = waitForTokenPosition(afterResizeTerminalView, token, 5000L);
+			scrollViewportToRow(afterResizeTerminalView, tokenPosAfterResize.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(afterResizeTerminalView, tokenPosAfterResize, token);
+
+			// Reported repro: after resize/unfold, hiding the keyboard can blank the console.
+			ensureSoftKeyboardVisibility(afterResize, false);
+			// Give the UI extra time to settle after a physical display resize + IME transition,
+			// which can be slow/flaky on some devices.
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(2000L));
+
+			TerminalView afterHideTerminalView = afterResize.adapter.getCurrentTerminalView();
+			if (afterHideTerminalView == null) {
+				afterHideTerminalView = afterResizeTerminalView;
+			}
+
+			BufferPosition tokenPosAfterHide = waitForTokenPosition(afterHideTerminalView, token, 5000L);
+			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
+		} finally {
+			try {
+				execShellCommand("wm size reset");
+			} catch (Throwable ignored) {
+			}
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
+					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
+					.commit();
+		}
+	}
+
+	@Test
 	public void selectionCopyRemainsCalibratedIfTextViewAttemptsToScrollDuringLongPress() {
 		Context testContext = ApplicationProvider.getApplicationContext();
 
@@ -1975,6 +2047,133 @@ public class TerminalSelectionCopyTest {
 			this.row = row;
 			this.col = col;
 		}
+	}
+
+	private static void scrollViewportToRow(final TerminalView terminalView, final int row) {
+		getInstrumentation().runOnMainSync(new Runnable() {
+			@Override
+			public void run() {
+				synchronized (terminalView.bridge.buffer) {
+					de.mud.terminal.VDUBuffer buffer = terminalView.bridge.getVDUBuffer();
+					int rows = Math.max(1, buffer.height);
+					int targetBase = row - (rows / 2);
+					buffer.setWindowBase(targetBase);
+				}
+				terminalView.bridge.redraw();
+			}
+		});
+	}
+
+	private static void assertTokenIsRenderedInBitmap(final TerminalView terminalView, final BufferPosition tokenPos, final String token) {
+		getInstrumentation().runOnMainSync(new Runnable() {
+			@Override
+			public void run() {
+				Bitmap bitmap = terminalView.bridge.bitmap;
+				if (bitmap == null) {
+					throw new AssertionError("TerminalBridge bitmap is null (console rendered blank)");
+				}
+
+				final int viewWidth = terminalView.getWidth();
+				final int viewHeight = terminalView.getHeight();
+				final int charWidth = terminalView.bridge.charWidth;
+				final int charHeight = terminalView.bridge.charHeight;
+
+				final int windowBase;
+				final int screenBase;
+				final int rows;
+				final int cols;
+				final char tokenChar;
+				final long tokenAttr;
+				synchronized (terminalView.bridge.buffer) {
+					de.mud.terminal.VDUBuffer buffer = terminalView.bridge.getVDUBuffer();
+					windowBase = buffer.getWindowBase();
+					screenBase = buffer.screenBase;
+					rows = buffer.height;
+					cols = buffer.width;
+					tokenChar = buffer.charArray[tokenPos.row][tokenPos.col];
+					tokenAttr = buffer.charAttributes[tokenPos.row][tokenPos.col];
+				}
+
+				final int drawnWindowBase = terminalView.bridge.getLastDrawnWindowBase();
+				final int baseForBitmap = (drawnWindowBase >= 0) ? drawnWindowBase : windowBase;
+
+				final int visibleRow = tokenPos.row - baseForBitmap;
+				if (visibleRow < 0 || visibleRow >= rows) {
+					throw new AssertionError("Token row not visible in viewport; tokenRow=" + tokenPos.row
+							+ " windowBase=" + windowBase
+							+ " drawnWindowBase=" + drawnWindowBase
+							+ " screenBase=" + screenBase
+							+ " rows=" + rows
+							+ " cols=" + cols
+							+ " view=" + viewWidth + "x" + viewHeight
+							+ " bitmap=" + bitmap.getWidth() + "x" + bitmap.getHeight());
+				}
+
+				final int left = Math.max(0, tokenPos.col * charWidth);
+				final int top = Math.max(0, visibleRow * charHeight);
+				final int right = Math.min(bitmap.getWidth(), left + (token.length() * charWidth));
+				final int bottom = Math.min(bitmap.getHeight(), top + charHeight);
+
+				if (right <= left || bottom <= top) {
+					throw new AssertionError("Token bitmap region out of bounds; left=" + left + " top=" + top
+							+ " right=" + right + " bottom=" + bottom
+							+ " char=" + charWidth + "x" + charHeight
+							+ " tokenCol=" + tokenPos.col
+							+ " visibleRow=" + visibleRow
+							+ " windowBase=" + windowBase
+							+ " drawnWindowBase=" + drawnWindowBase
+							+ " view=" + viewWidth + "x" + viewHeight
+							+ " bitmap=" + bitmap.getWidth() + "x" + bitmap.getHeight());
+				}
+
+				boolean foundNonBlack = false;
+				final int step = 1;
+				for (int y = top; y < bottom && !foundNonBlack; y += step) {
+					for (int x = left; x < right; x += step) {
+						if (bitmap.getPixel(x, y) != 0xff000000) {
+							foundNonBlack = true;
+							break;
+						}
+					}
+				}
+
+				if (!foundNonBlack) {
+					boolean anyNonBlack = false;
+					final int coarseStep = 20;
+					for (int y = 0; y < bitmap.getHeight() && !anyNonBlack; y += coarseStep) {
+						for (int x = 0; x < bitmap.getWidth(); x += coarseStep) {
+							if (bitmap.getPixel(x, y) != 0xff000000) {
+								anyNonBlack = true;
+								break;
+							}
+						}
+					}
+
+					throw new AssertionError("Expected token region to contain non-black pixels (text visible); "
+							+ "anyNonBlack=" + anyNonBlack
+							+ " tokenRow=" + tokenPos.row
+							+ " tokenCol=" + tokenPos.col
+							+ " visibleRow=" + visibleRow
+							+ " pagerScrollX=" + terminalView.viewPager.getScrollX()
+							+ " pagerWidth=" + terminalView.viewPager.getWidth()
+							+ " pagerCurrentItem=" + terminalView.viewPager.getCurrentItem()
+							+ " pagerChildCount=" + terminalView.viewPager.getChildCount()
+							+ " defaultFg=" + terminalView.bridge.defaultFg
+							+ " defaultBg=" + terminalView.bridge.defaultBg
+							+ " fgColor=0x" + Integer.toHexString(terminalView.bridge.color[terminalView.bridge.defaultFg])
+							+ " bgColor=0x" + Integer.toHexString(terminalView.bridge.color[terminalView.bridge.defaultBg])
+							+ " tokenChar='" + tokenChar + "'"
+							+ " tokenAttr=0x" + Long.toHexString(tokenAttr)
+							+ " windowBase=" + windowBase
+							+ " drawnWindowBase=" + drawnWindowBase
+							+ " screenBase=" + screenBase
+							+ " rows=" + rows
+							+ " cols=" + cols
+							+ " view=" + viewWidth + "x" + viewHeight
+							+ " bitmap=" + bitmap.getWidth() + "x" + bitmap.getHeight());
+				}
+			}
+		});
 	}
 
 	private static void grantPostNotificationsPermissionIfNeeded(Context context) {

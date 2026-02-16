@@ -95,7 +95,6 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private static final int KEYBOARD_REPEAT_INITIAL = 500;
 	private static final int KEYBOARD_REPEAT = 100;
 	private static final String STATE_SELECTED_URI = "selectedUri";
-
 	protected TerminalViewPager pager = null;
 	@Nullable
 	protected TerminalManager bound = null;
@@ -143,6 +142,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private ImageView mKeyboardButton;
 
 	private boolean pagerRepopulateQueued = false;
+	@Nullable private Boolean lastSoftKeyboardVisible = null;
 
 	@Nullable private ActionBar actionBar;
 	private boolean inActionBarMenu = false;
@@ -174,6 +174,11 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			return;
 		}
 
+		final int current = Math.min(Math.max(0, pager.getCurrentItem()), count - 1);
+		if (pager.getAdapter() != adapter) {
+			pager.setAdapter(adapter);
+		}
+
 		// We've observed that on some foldable/resizable-window transitions (especially when
 		// toggling IME visibility after a screen-size change) ViewPager can transiently drop all
 		// child views even though the underlying session list still exists.
@@ -181,9 +186,20 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		// If that happens, the user sees an empty black console. Force ViewPager to recreate its
 		// pages from the existing adapter.
 		if (pager.getChildCount() == 0) {
-			final int current = Math.min(pager.getCurrentItem(), count - 1);
 			pager.setAdapter(adapter);
 			pager.setCurrentItem(current, false);
+			return;
+		}
+
+		// After a resize, ViewPager can end up scrolled away from the current item even though the
+		// child view still exists. Snap back to the current page.
+		final int width = pager.getWidth();
+		if (width > 0) {
+			final int expectedScrollX = current * width;
+			final int delta = Math.abs(pager.getScrollX() - expectedScrollX);
+			if (delta >= (width / 2)) {
+				pager.setCurrentItem(current, false);
+			}
 		}
 	}
 
@@ -633,10 +649,6 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 					InputMethodManager.SHOW_FORCED, 0);
 				terminal.requestFocus();
 				hideEmulatedKeys();
-
-				// The IME show/hide transition can race with ViewPager layout on foldables. Ensure the
-				// pager is populated after the resize settles.
-				queueEnsurePagerPopulated();
 			}
 		});
 
@@ -745,7 +757,8 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 					int screenHeight = contentView.getRootView().getHeight();
 					int keypadHeight = screenHeight - r.bottom;
 
-					if (keypadHeight > screenHeight * 0.15) {
+					final boolean isKeyboardOpen = keypadHeight > screenHeight * 0.15;
+					if (isKeyboardOpen) {
 						// keyboard is opened
 						mKeyboardButton.setImageResource(R.drawable.ic_keyboard_hide);
 						mKeyboardButton.setContentDescription(getResources().getText(R.string.image_description_hide_keyboard));
@@ -755,9 +768,13 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 						mKeyboardButton.setContentDescription(getResources().getText(R.string.image_description_show_keyboard));
 					}
 
-					// If a resize/IME transition caused the pager to temporarily lose its child views,
-					// restore them (otherwise the user sees a blank console).
-					queueEnsurePagerPopulated();
+					// Only trigger the recovery flow when IME visibility actually toggles. Other layout
+					// changes (selection handles/action mode, in-app overlays) can generate lots of
+					// global layout passes and should not be treated as pager corruption.
+					if (lastSoftKeyboardVisible == null || lastSoftKeyboardVisible.booleanValue() != isKeyboardOpen) {
+						lastSoftKeyboardVisible = isKeyboardOpen;
+						queueEnsurePagerPopulated();
+					}
 				}
 			});
 	}

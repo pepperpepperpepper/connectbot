@@ -24,19 +24,20 @@
 	android:layout_height="fill_parent"
 	android:background="#ff000000">
 
+	<org.connectbot.util.TerminalViewPager
+		android:id="@+id/console_flip"
+		android:layout_width="fill_parent"
+		android:layout_height="fill_parent"
+		/>
+
 	<TextView
 		android:id="@android:id/empty"
 		android:layout_width="fill_parent"
 		android:layout_height="fill_parent"
 		android:gravity="center"
 		android:text="@string/terminal_no_hosts_connected"
-		android:textAppearance="?android:attr/textAppearanceMedium"/>
-
-	<org.connectbot.util.TerminalViewPager
-		android:id="@+id/console_flip"
-		android:layout_width="fill_parent"
-		android:layout_height="fill_parent"
-		/>
+		android:textAppearance="?android:attr/textAppearanceMedium"
+		android:visibility="gone"/>
 
 	<RelativeLayout
 		android:id="@+id/console_password_group"
