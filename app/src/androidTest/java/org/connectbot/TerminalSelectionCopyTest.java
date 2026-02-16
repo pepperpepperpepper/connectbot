@@ -48,6 +48,7 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.lessThanOrEqualTo;
+import static org.hamcrest.Matchers.greaterThan;
 
 @RunWith(AndroidJUnit4.class)
 public class TerminalSelectionCopyTest {
@@ -971,6 +972,54 @@ public class TerminalSelectionCopyTest {
 	}
 
 	@Test
+	public void consoleKeepsConnectedHostsAfterDisplayResizeAndKeyboardToggle() throws Exception {
+		Context testContext = ApplicationProvider.getApplicationContext();
+
+		SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
+		boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);
+		String wasScrollback = settings.getString(PreferenceConstants.SCROLLBACK, "140");
+
+		try {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+					.putString(PreferenceConstants.SCROLLBACK, STRESS_SCROLLBACK_LINES)
+					.commit();
+
+			startNewLocalConnectionWithoutIntents("Local");
+			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
+
+			ensureSoftKeyboardVisibility(consoleActivity, true);
+			assertConsoleHasConnectedHosts(consoleActivity, 5000L);
+
+			// Simulate a foldable "unfold" / window-size-class change by changing the physical display
+			// size. Some devices restart or re-layout aggressively under IME hide/show after such a
+			// resize; we should never show "No hosts currently connected" while sessions exist.
+			execShellCommand("wm size 1200x2000");
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(1500L));
+
+			ConsoleActivity afterResize = waitForConsoleActivity(10000L);
+			assertConsoleHasConnectedHosts(afterResize, 5000L);
+
+			// Reported repro: after resize/unfold, hiding the keyboard can cause the console to show
+			// the empty-hosts message even though sessions are still connected.
+			ensureSoftKeyboardVisibility(afterResize, false);
+			assertConsoleHasConnectedHosts(afterResize, 5000L);
+
+			ensureSoftKeyboardVisibility(afterResize, true);
+			assertConsoleHasConnectedHosts(afterResize, 5000L);
+		} finally {
+			try {
+				execShellCommand("wm size reset");
+			} catch (Throwable ignored) {
+			}
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
+					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
+					.commit();
+		}
+	}
+
+	@Test
 	public void selectionCopyRemainsCalibratedIfTextViewAttemptsToScrollDuringLongPress() {
 		Context testContext = ApplicationProvider.getApplicationContext();
 
@@ -1311,6 +1360,64 @@ public class TerminalSelectionCopyTest {
 				"Overlay baseline must match terminal baseline",
 				Math.abs(overlayBaseline[0] - expectedBaseline[0]),
 				lessThanOrEqualTo(1));
+	}
+
+	private static void assertConsoleHasConnectedHosts(final ConsoleActivity consoleActivity, long timeoutMillis) {
+		final long start = SystemClock.uptimeMillis();
+		Throwable lastError = null;
+
+		while (SystemClock.uptimeMillis() - start < timeoutMillis) {
+			try {
+				final int[] count = new int[1];
+				final int[] emptyVisibility = new int[1];
+
+				getInstrumentation().runOnMainSync(new Runnable() {
+					@Override
+					public void run() {
+						count[0] = consoleActivity.adapter != null ? consoleActivity.adapter.getCount() : 0;
+						View empty = consoleActivity.findViewById(android.R.id.empty);
+						emptyVisibility[0] = (empty != null) ? empty.getVisibility() : View.GONE;
+					}
+				});
+
+				assertThat("Expected at least one connected host", count[0], greaterThan(0));
+				assertThat("Empty view must not be visible when hosts are connected", emptyVisibility[0], not(equalTo(View.VISIBLE)));
+
+				// Also ensure the current terminal view is present in the view hierarchy.
+				waitForTerminalView(consoleActivity, 2000L);
+				return;
+			} catch (Throwable t) {
+				lastError = t;
+				SystemClock.sleep(100L);
+			}
+		}
+
+		AssertionError error = new AssertionError("Timed out waiting for connected hosts to be visible in ConsoleActivity");
+		if (lastError != null) {
+			error.initCause(lastError);
+		}
+		throw error;
+	}
+
+	private static TerminalView waitForTerminalView(final ConsoleActivity consoleActivity, long timeoutMillis) {
+		final long start = SystemClock.uptimeMillis();
+		while (SystemClock.uptimeMillis() - start < timeoutMillis) {
+			final TerminalView[] view = new TerminalView[1];
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					View candidate = consoleActivity.findViewById(R.id.terminal_view);
+					if (candidate instanceof TerminalView) {
+						view[0] = (TerminalView) candidate;
+					}
+				}
+			});
+			if (view[0] != null) {
+				return view[0];
+			}
+			SystemClock.sleep(50L);
+		}
+		throw new AssertionError("Timed out waiting for TerminalView to be present");
 	}
 
 	private static void assertOverlayScrollAlignedWithWindowBase(final TerminalView terminalView) {

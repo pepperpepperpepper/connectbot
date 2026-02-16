@@ -171,6 +171,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 			// create views for all bridges on this service
 			adapter.notifyDataSetChanged();
+			updateEmptyVisible();
 			final int requestedIndex = bound.getBridges().indexOf(requestedBridge);
 
 			if (requestedBridge != null)
@@ -201,6 +202,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	public void onDisconnected(TerminalBridge bridge) {
 		synchronized (adapter) {
 			adapter.notifyDataSetChanged();
+			updateEmptyVisible();
 			Log.d(TAG, "Someone sending HANDLE_DISCONNECT to parentHandler");
 
 			if (bridge.isAwaitingClose()) {
@@ -364,7 +366,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		updatePromptVisible();
 
 		// If we just closed the last bridge, go back to the previous activity.
-		if (pager.getChildCount() == 0) {
+		if (adapter.getCount() == 0) {
 			finish();
 			unregisterMenuListeners();
 		}
@@ -1029,6 +1031,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 				}
 
 				adapter.notifyDataSetChanged();
+				updateEmptyVisible();
 				requestedIndex = adapter.getCount();
 			} else {
 				final int flipIndex = bound.getBridges().indexOf(requestedBridge);
@@ -1077,7 +1080,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 	protected void updateEmptyVisible() {
 		// update visibility of empty status message
-		empty.setVisibility((pager.getChildCount() == 0) ? View.VISIBLE : View.GONE);
+		empty.setVisibility((adapter.getCount() == 0) ? View.VISIBLE : View.GONE);
 	}
 
 	/**

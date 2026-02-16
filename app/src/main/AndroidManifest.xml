@@ -174,7 +174,7 @@
 
 		<activity
 			android:name=".ConsoleActivity"
-			android:configChanges="keyboardHidden|orientation"
+			android:configChanges="keyboardHidden|orientation|screenSize|smallestScreenSize|screenLayout"
 			android:launchMode="singleTop"
 			android:windowSoftInputMode="stateAlwaysVisible|adjustResize"
 			android:exported="true">
