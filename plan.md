@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.17` (`10914018`) to afteroid/F-Droid repo (Feb 16, 2026).
+- Published **google** flavor `1.9.13.18` (`10914019`) to afteroid/F-Droid repo (Feb 16, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -190,6 +190,13 @@ Capture:
   - Empty-hosts UI now keys off `adapter.getCount()` (not `ViewPager.getChildCount()`), and we update it after binding/disconnect.
   - Regression test: `TerminalSelectionCopyTest#consoleKeepsConnectedHostsAfterDisplayResizeAndKeyboardToggle`.
 - Published in: `1.9.13.17` (`10914018`) (Feb 16, 2026).
+
+- Follow-up user report (foldables): after unfolding, hiding the keyboard could result in a **blank black console** (sessions still exist but `ViewPager` has no child views rendered).
+- Fix (v1.9.13 build):
+  - Add a recovery path that **re-populates** the `ViewPager` if sessions exist but there are no page views.
+  - Show a non-misleading placeholder message (“Restoring sessions…”) while recovery happens (instead of a blank screen).
+  - Covered indirectly by the existing foldable regression test.
+- Published in: `1.9.13.18` (`10914019`) (Feb 16, 2026).
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
