@@ -20,7 +20,24 @@ export TMPDIR
 #     (wired to -PconnectbotTermlibVersion in app/build.gradle.kts).
 
 RECIPE_UUID="${1:-${GMSAAS_RECIPE_UUID:-d212b329-aacd-4fe5-aa76-3480f12a6200}}"
-TEST_CLASS="${2:-${CONNECTBOT_ANDROID_TEST_CLASS:-org.connectbot.terminal.TerminalClipboardSelectionTest}}"
+
+if [[ -n "${2:-}" ]]; then
+  TEST_CLASS="${2}"
+elif [[ -n "${CONNECTBOT_ANDROID_TEST_CLASS:-}" ]]; then
+  TEST_CLASS="${CONNECTBOT_ANDROID_TEST_CLASS}"
+else
+  # Allow the same script to run against both:
+  # - legacy (blue UI) v1.9.13-era checkout
+  # - newer (black/Compose UI) checkout
+  if [[ -f "app/src/androidTest/java/org/connectbot/TerminalSelectionCopyTest.java" ]]; then
+    TEST_CLASS="org.connectbot.TerminalSelectionCopyTest"
+  elif [[ -f "app/src/androidTest/java/org/connectbot/terminal/TerminalClipboardSelectionTest.kt" ]]; then
+    TEST_CLASS="org.connectbot.terminal.TerminalClipboardSelectionTest"
+  else
+    TEST_CLASS="org.connectbot.terminal.TerminalClipboardSelectionTest"
+  fi
+fi
+
 GRADLE_TASK="${3:-${CONNECTBOT_GRADLE_TASK:-:app:connectedGoogleDebugAndroidTest}}"
 MAX_RUN_MINUTES="${GMSAAS_MAX_RUN_MINUTES:-60}"
 TERMLIB_VERSION="${CONNECTBOT_TERMLIB_VERSION:-}"

@@ -125,8 +125,16 @@ run_test_class() {
 }
 
 # Keep this suite intentionally small and deterministic.
-run_test_class "org.connectbot.terminal.TerminalClipboardSelectionTest"
-run_test_class "org.connectbot.terminal.TerminalLinkTapTest"
-run_test_class "org.connectbot.terminal.TerminalReadlineKeybindingsTest"
+#
+# This script can run against either checkout:
+# - legacy (blue UI) v1.9.13-era codebase (publishing target)
+# - newer (black/Compose UI) codebase (dev-only)
+if [[ -f "app/src/androidTest/java/org/connectbot/TerminalSelectionCopyTest.java" ]]; then
+  run_test_class "org.connectbot.TerminalSelectionCopyTest"
+else
+  run_test_class "org.connectbot.terminal.TerminalClipboardSelectionTest"
+  run_test_class "org.connectbot.terminal.TerminalLinkTapTest"
+  run_test_class "org.connectbot.terminal.TerminalReadlineKeybindingsTest"
+fi
 
 echo "Release gate passed ✅"
