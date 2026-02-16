@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.19` (`10914020`) to afteroid/F-Droid repo (Feb 16, 2026).
+- Published **google** flavor `1.9.13.20` (`10914021`) to afteroid/F-Droid repo (Feb 16, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -204,6 +204,13 @@ Capture:
   - `ConsoleActivity.ensurePagerPopulated()` was re-simplified so it only rebinds the adapter when `ViewPager` truly has **zero** child views (avoids view churn that can break selection calibration).
   - Regression test: `TerminalSelectionCopyTest#consoleStillRendersAfterDisplayResizeAndKeyboardToggle` (uses `wm size …` to simulate fold/unfold + IME hide, then asserts non-black pixels).
 - Published in: `1.9.13.19` (`10914020`) (Feb 16, 2026).
+
+- Follow-up user report (foldables): after unfolding, hiding the keyboard could still produce a **black console** even though sessions exist.
+- Fix (v1.9.13 build):
+  - `ConsoleActivity` now tracks **real display-size changes** (`screenWidthDp/screenHeightDp/smallestScreenWidthDp/screenLayout`) in `onConfigurationChanged()` and only runs aggressive `ViewPager` recovery within a short window after a fold/unfold resize (avoids breaking normal selection/copy during routine IME animations).
+  - `ConsoleActivity` also queues the pager sanity check directly from the keyboard toggle button (some devices don’t reliably report IME visibility via `getWindowVisibleDisplayFrame` during fold/unfold).
+  - Regression test `consoleStillRendersAfterDisplayResizeAndKeyboardToggle` now validates the **drawn `TerminalView` output** (not just the bridge backing bitmap) so zero-sized/off-screen pages are caught.
+- Published in: `1.9.13.20` (`10914021`) (Feb 16, 2026).
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
