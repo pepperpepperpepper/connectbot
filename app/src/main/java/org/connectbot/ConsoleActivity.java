@@ -47,6 +47,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.StrictMode;
+import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import androidx.annotation.Nullable;
 import androidx.core.app.ActivityCompat;
@@ -95,6 +96,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private static final int KEYBOARD_REPEAT_INITIAL = 500;
 	private static final int KEYBOARD_REPEAT = 100;
 	private static final String STATE_SELECTED_URI = "selectedUri";
+	private static final long DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS = 10_000L;
 	protected TerminalViewPager pager = null;
 	@Nullable
 	protected TerminalManager bound = null;
@@ -142,7 +144,15 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private ImageView mKeyboardButton;
 
 	private boolean pagerRepopulateQueued = false;
+	private boolean pagerRepopulateDelayedQueued = false;
+	private int pagerRecoveryAttempts = 0;
 	@Nullable private Boolean lastSoftKeyboardVisible = null;
+
+	private int lastScreenWidthDp = -1;
+	private int lastScreenHeightDp = -1;
+	private int lastSmallestScreenWidthDp = -1;
+	private int lastScreenLayout = -1;
+	private long lastDisplayResizeUptimeMillis = 0L;
 
 	@Nullable private ActionBar actionBar;
 	private boolean inActionBarMenu = false;
@@ -162,6 +172,27 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 				updateEmptyVisible();
 			}
 		});
+	}
+
+	private void queueEnsurePagerPopulatedDelayed() {
+		if (pagerRepopulateDelayedQueued || pager == null) {
+			return;
+		}
+		pagerRepopulateDelayedQueued = true;
+		pager.postDelayed(new Runnable() {
+			@Override
+			public void run() {
+				pagerRepopulateDelayedQueued = false;
+				queueEnsurePagerPopulated();
+			}
+		}, 250L);
+	}
+
+	private boolean hasRecentDisplayResize() {
+		if (lastDisplayResizeUptimeMillis <= 0L) {
+			return false;
+		}
+		return (SystemClock.uptimeMillis() - lastDisplayResizeUptimeMillis) < DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS;
 	}
 
 	private void ensurePagerPopulated() {
@@ -186,9 +217,50 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		// If that happens, the user sees an empty black console. Force ViewPager to recreate its
 		// pages from the existing adapter.
 		if (pager.getChildCount() == 0) {
+			pagerRecoveryAttempts = 0;
 			pager.setAdapter(adapter);
 			pager.setCurrentItem(current, false);
 			return;
+		}
+
+		// ViewPager can also keep its child container while the current page view is missing or
+		// has temporarily zero size (e.g., during fold/unfold + IME animations). In that state the
+		// user sees a blank (black) console even though sessions still exist.
+		TerminalView currentTerminalView = adapter.getCurrentTerminalView();
+		if (currentTerminalView == null
+				|| currentTerminalView.getWidth() <= 0
+				|| currentTerminalView.getHeight() <= 0) {
+			if (!hasRecentDisplayResize()) {
+				// During normal IME animations it's expected for ViewPager/child views to briefly
+				// report missing/0-sized measurements. Don't recreate pages unless we're recovering
+				// from a recent fold/unfold (display size) transition.
+				pagerRecoveryAttempts = 0;
+				return;
+			}
+
+			pagerRecoveryAttempts++;
+			if (pagerRecoveryAttempts < 3) {
+				queueEnsurePagerPopulatedDelayed();
+				return;
+			}
+			pagerRecoveryAttempts = 0;
+			pager.setAdapter(adapter);
+			pager.setCurrentItem(current, false);
+			pager.requestLayout();
+			return;
+		}
+		pagerRecoveryAttempts = 0;
+
+		// If the view is present but the bridge bitmap is missing or mismatched, force a redraw.
+		// This is a low-frequency recovery path (normal resizes go through TerminalView.onSizeChanged()).
+		if (hasRecentDisplayResize() && currentTerminalView.bridge != null) {
+			android.graphics.Bitmap bitmap = currentTerminalView.bridge.bitmap;
+			if (bitmap == null
+					|| bitmap.getWidth() != currentTerminalView.getWidth()
+					|| bitmap.getHeight() != currentTerminalView.getHeight()) {
+				currentTerminalView.bridge.parentChanged(currentTerminalView);
+				currentTerminalView.invalidate();
+			}
 		}
 
 		// After a resize, ViewPager can end up scrolled away from the current item even though the
@@ -524,6 +596,12 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 		this.setContentView(R.layout.act_console);
 
+		Configuration config = getResources().getConfiguration();
+		lastScreenWidthDp = config.screenWidthDp;
+		lastScreenHeightDp = config.screenHeightDp;
+		lastSmallestScreenWidthDp = config.smallestScreenWidthDp;
+		lastScreenLayout = config.screenLayout;
+
 		// hide status bar if requested by user
 		if (prefs.getBoolean(PreferenceConstants.FULLSCREEN, false)) {
 			getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
@@ -649,6 +727,11 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 					InputMethodManager.SHOW_FORCED, 0);
 				terminal.requestFocus();
 				hideEmulatedKeys();
+
+				// Some devices don't reliably report IME visibility changes via getWindowVisibleDisplayFrame
+				// during fold/unfold transitions. Always queue a pager sanity check after the user taps
+				// the keyboard toggle.
+				queueEnsurePagerPopulated();
 			}
 		});
 
@@ -1150,6 +1233,9 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 		final int sessionCount = adapter.getCount();
 		final int pageCount = pager.getChildCount();
+		final TerminalView currentTerminalView = adapter.getCurrentTerminalView();
+		final boolean currentViewHasNoSize = (currentTerminalView != null
+				&& (currentTerminalView.getWidth() <= 0 || currentTerminalView.getHeight() <= 0));
 
 		if (sessionCount == 0) {
 			empty.setText(R.string.terminal_no_hosts_connected);
@@ -1157,7 +1243,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			return;
 		}
 
-		if (pageCount == 0) {
+		if (pageCount == 0 || (hasRecentDisplayResize() && (currentTerminalView == null || currentViewHasNoSize))) {
 			// We have active sessions but nothing is being rendered. Try to repopulate the pager and
 			// show a non-misleading placeholder while we recover.
 			empty.setText(R.string.terminal_restoring_sessions);
@@ -1242,6 +1328,21 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	@Override
 	public void onConfigurationChanged(Configuration newConfig) {
 		super.onConfigurationChanged(newConfig);
+
+		boolean displaySizeChanged = false;
+		if (lastScreenWidthDp != -1) {
+			displaySizeChanged = (newConfig.screenWidthDp != lastScreenWidthDp)
+					|| (newConfig.screenHeightDp != lastScreenHeightDp)
+					|| (newConfig.smallestScreenWidthDp != lastSmallestScreenWidthDp)
+					|| (newConfig.screenLayout != lastScreenLayout);
+		}
+		lastScreenWidthDp = newConfig.screenWidthDp;
+		lastScreenHeightDp = newConfig.screenHeightDp;
+		lastSmallestScreenWidthDp = newConfig.smallestScreenWidthDp;
+		lastScreenLayout = newConfig.screenLayout;
+		if (displaySizeChanged) {
+			lastDisplayResizeUptimeMillis = SystemClock.uptimeMillis();
+		}
 
 		Log.d(TAG, String.format("onConfigurationChanged; requestedOrientation=%d, newConfig.orientation=%d", getRequestedOrientation(), newConfig.orientation));
 		if (bound != null) {

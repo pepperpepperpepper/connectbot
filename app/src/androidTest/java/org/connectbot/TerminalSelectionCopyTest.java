@@ -2068,13 +2068,16 @@ public class TerminalSelectionCopyTest {
 		getInstrumentation().runOnMainSync(new Runnable() {
 			@Override
 			public void run() {
-				Bitmap bitmap = terminalView.bridge.bitmap;
-				if (bitmap == null) {
-					throw new AssertionError("TerminalBridge bitmap is null (console rendered blank)");
-				}
-
 				final int viewWidth = terminalView.getWidth();
 				final int viewHeight = terminalView.getHeight();
+				if (viewWidth <= 0 || viewHeight <= 0) {
+					throw new AssertionError("TerminalView has no size (console not visible); view=" + viewWidth + "x" + viewHeight);
+				}
+
+				// Render what the user actually sees, not just the bridge backing bitmap.
+				Bitmap bitmap = Bitmap.createBitmap(viewWidth, viewHeight, Bitmap.Config.ARGB_8888);
+				android.graphics.Canvas canvas = new android.graphics.Canvas(bitmap);
+				terminalView.draw(canvas);
 				final int charWidth = terminalView.bridge.charWidth;
 				final int charHeight = terminalView.bridge.charHeight;
 
