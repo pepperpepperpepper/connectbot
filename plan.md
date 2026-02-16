@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.16` (`10914017`) to afteroid/F-Droid repo (Feb 12, 2026).
+- Published **google** flavor `1.9.13.17` (`10914018`) to afteroid/F-Droid repo (Feb 16, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -183,6 +183,13 @@ Capture:
 - User report: on Google Pixel Fold, **unfolding** (window size class change) can show **“No hosts currently connected”** instead of rendering existing active sessions; folding back restores the sessions list/view.
 - Fix (v1.9.13 build): removed the `layout-large/act_console.xml` “tablet” console layout so fold/unfold cannot switch into an untested alternate UI path; the console uses the standard layout on all screen sizes.
 - Published in: `1.9.13.15` (`10914016`) (Feb 12, 2026).
+
+- Follow-up user report (foldables): after unfolding, tapping the ConnectBot **keyboard hide/show** button can incorrectly show **“No hosts currently connected”** until toggling again.
+- Fix (v1.9.13 build):
+  - `ConsoleActivity` now handles `screenSize|smallestScreenSize|screenLayout` config changes so IME-driven window-size changes don’t restart the activity on foldables/resizable windows.
+  - Empty-hosts UI now keys off `adapter.getCount()` (not `ViewPager.getChildCount()`), and we update it after binding/disconnect.
+  - Regression test: `TerminalSelectionCopyTest#consoleKeepsConnectedHostsAfterDisplayResizeAndKeyboardToggle`.
+- Published in: `1.9.13.17` (`10914018`) (Feb 16, 2026).
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
