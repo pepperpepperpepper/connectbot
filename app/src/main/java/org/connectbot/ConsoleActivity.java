@@ -160,6 +160,52 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private boolean titleBarHide;
 	private boolean keyboardAlwaysVisible = false;
 
+	private void queueRecoverCurrentTerminalDelayed(long delayMillis) {
+		if (pager == null) {
+			return;
+		}
+		pager.postDelayed(new Runnable() {
+			@Override
+			public void run() {
+				recoverCurrentTerminalNow();
+			}
+		}, delayMillis);
+	}
+
+	private void recoverCurrentTerminalNow() {
+		if (pager == null || adapter == null) {
+			return;
+		}
+
+		ensurePagerPopulated();
+		updateEmptyVisible();
+		if (adapter.getCount() <= 0) {
+			return;
+		}
+
+		final TerminalView terminalView = adapter.getCurrentTerminalView();
+		if (terminalView == null) {
+			// If the current page is temporarily missing during a resize/IME animation, try again
+			// after layout settles.
+			queueRecoverCurrentTerminalDelayed(250L);
+			return;
+		}
+
+		// ViewPager can end up scrolled away from the current item after size changes; always snap.
+		pager.setCurrentItem(pager.getCurrentItem(), false);
+
+		if (terminalView.getWidth() <= 0 || terminalView.getHeight() <= 0) {
+			queueRecoverCurrentTerminalDelayed(250L);
+			return;
+		}
+
+		// Force the bridge to re-bind/repaint its backing bitmap against the current view size.
+		terminalView.bridge.parentChanged(terminalView);
+		terminalView.bridge.requestFullRedraw();
+		terminalView.invalidate();
+		pager.invalidate();
+	}
+
 	private void queueEnsurePagerPopulated() {
 		if (pagerRepopulateQueued || pager == null) {
 			return;
@@ -743,13 +789,13 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		}
 
 		mKeyboardButton = findViewById(R.id.button_keyboard);
-		mKeyboardButton.setOnClickListener(new OnClickListener() {
-			@Override
-			public void onClick(View view) {
-				TerminalView terminal = adapter.getCurrentTerminalView();
-				if (terminal == null) {
-					return;
-				}
+			mKeyboardButton.setOnClickListener(new OnClickListener() {
+				@Override
+				public void onClick(View view) {
+					TerminalView terminal = adapter.getCurrentTerminalView();
+					if (terminal == null) {
+						return;
+					}
 				InputMethodManager inputMethodManager =
 					(InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
 				inputMethodManager.toggleSoftInputFromWindow(terminal.getApplicationWindowToken(),
@@ -757,14 +803,16 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 				terminal.requestFocus();
 				hideEmulatedKeys();
 
-				// Some devices don't reliably report IME visibility changes via getWindowVisibleDisplayFrame
-				// during fold/unfold transitions. Always queue a pager sanity check after the user taps
-				// the keyboard toggle.
-				queueEnsurePagerPopulated();
-				terminal.bridge.requestFullRedraw();
-				terminal.invalidate();
-			}
-		});
+					// Some devices don't reliably report IME visibility changes via getWindowVisibleDisplayFrame
+					// during fold/unfold transitions. Always queue a pager sanity check after the user taps
+					// the keyboard toggle.
+					queueEnsurePagerPopulated();
+					terminal.bridge.requestFullRedraw();
+					terminal.invalidate();
+					queueRecoverCurrentTerminalDelayed(350L);
+					queueRecoverCurrentTerminalDelayed(1200L);
+				}
+			});
 
 		findViewById(R.id.button_ctrl).setOnClickListener(emulatedKeysListener);
 		findViewById(R.id.button_esc).setOnClickListener(emulatedKeysListener);
@@ -884,14 +932,16 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 					// Only trigger the recovery flow when IME visibility actually toggles. Other layout
 					// changes (selection handles/action mode, in-app overlays) can generate lots of
-					// global layout passes and should not be treated as pager corruption.
-					if (lastSoftKeyboardVisible == null || lastSoftKeyboardVisible.booleanValue() != isKeyboardOpen) {
-						lastSoftKeyboardVisible = isKeyboardOpen;
-						queueEnsurePagerPopulated();
+						// global layout passes and should not be treated as pager corruption.
+						if (lastSoftKeyboardVisible == null || lastSoftKeyboardVisible.booleanValue() != isKeyboardOpen) {
+							lastSoftKeyboardVisible = isKeyboardOpen;
+							queueEnsurePagerPopulated();
+							queueRecoverCurrentTerminalDelayed(0L);
+							queueRecoverCurrentTerminalDelayed(500L);
+						}
 					}
-				}
-			});
-	}
+				});
+		}
 
 	private void addKeyRepeater(View view) {
 		KeyRepeater keyRepeater = new KeyRepeater(keyRepeatHandler, view);
@@ -1357,8 +1407,8 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	}
 
 	@Override
-	public void onConfigurationChanged(Configuration newConfig) {
-		super.onConfigurationChanged(newConfig);
+		public void onConfigurationChanged(Configuration newConfig) {
+			super.onConfigurationChanged(newConfig);
 
 		boolean displaySizeChanged = false;
 		if (lastScreenWidthDp != -1) {
@@ -1388,8 +1438,10 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			mKeyboardButton.setVisibility(bound.hardKeyboardHidden ? View.VISIBLE : View.GONE);
 		}
 
-		queueEnsurePagerPopulated();
-	}
+			queueEnsurePagerPopulated();
+			queueRecoverCurrentTerminalDelayed(250L);
+			queueRecoverCurrentTerminalDelayed(1000L);
+		}
 
 	/**
 	 * Called whenever the displayed terminal is changed.
