@@ -3,6 +3,8 @@ package org.connectbot;
 import org.connectbot.util.HostDatabase;
 import org.connectbot.util.PreferenceConstants;
 import org.connectbot.util.TerminalTextViewOverlay;
+import org.connectbot.service.TerminalManager;
+import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -73,6 +75,33 @@ public class TerminalSelectionCopyTest {
 		activityRule.launchActivity(new Intent());
 	}
 
+	@After
+	public void tearDown() {
+		final Context testContext = ApplicationProvider.getApplicationContext();
+
+		Activity resumed = getResumedActivity();
+		if (resumed instanceof ConsoleActivity) {
+			final ConsoleActivity consoleActivity = (ConsoleActivity) resumed;
+			getInstrumentation().runOnMainSync(new Runnable() {
+				@Override
+				public void run() {
+					if (consoleActivity.bound != null) {
+						consoleActivity.bound.disconnectAll(true, false);
+					}
+					consoleActivity.finish();
+				}
+			});
+			SystemClock.sleep(500L);
+		}
+
+		// Ensure the long-lived TerminalManager service doesn't carry sessions across tests.
+		try {
+			testContext.stopService(new Intent(testContext, TerminalManager.class));
+		} catch (Throwable ignored) {
+		}
+		SystemClock.sleep(500L);
+	}
+
 	@Test
 	public void selectionCopyWorksWithSoftKeyboardVisible() {
 		Context testContext = ApplicationProvider.getApplicationContext();
@@ -89,7 +118,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ensureSoftKeyboardVisibility(consoleActivity, true);
 
@@ -129,7 +158,7 @@ public class TerminalSelectionCopyTest {
 			startNewLocalConnectionWithoutIntents("Local");
 
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ensureSoftKeyboardVisibility(consoleActivity, true);
 			final int rowsWithKeyboardVisible = getTerminalRows(terminalView);
@@ -184,7 +213,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			// "Works at first, then breaks" often suggests a state drift. Stress repeated
 			// IME hide/show + buffer growth and validate copy at multiple viewport anchors.
@@ -256,7 +285,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ClipboardManager clipboard = (ClipboardManager) testContext.getSystemService(Context.CLIPBOARD_SERVICE);
 
@@ -318,7 +347,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ensureSoftKeyboardVisibility(consoleActivity, true);
 			assertHitTestingMatchesTerminalGrid(terminalView);
@@ -350,7 +379,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			final String token5 = "NUM00005";
 			final String token45 = "NUM00045";
@@ -447,7 +476,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ClipboardManager clipboard = (ClipboardManager) testContext.getSystemService(Context.CLIPBOARD_SERVICE);
 
@@ -552,7 +581,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			// Use the hidden-keyboard layout (more rows => faster saturation for a fixed scrollback).
 			ensureSoftKeyboardVisibility(consoleActivity, false);
@@ -645,7 +674,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ensureSoftKeyboardVisibility(consoleActivity, false);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
@@ -746,7 +775,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ensureSoftKeyboardVisibility(consoleActivity, false);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
@@ -841,7 +870,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ensureSoftKeyboardVisibility(consoleActivity, true);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
@@ -1039,7 +1068,7 @@ public class TerminalSelectionCopyTest {
 
 			ensureSoftKeyboardVisibility(consoleActivity, true);
 
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 			final String token = "RENDERTOKEN";
 			insertTerminalOutput(terminalView, "\r\n" + token + "\r\n");
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
@@ -1056,7 +1085,7 @@ public class TerminalSelectionCopyTest {
 			ConsoleActivity afterResize = waitForConsoleActivity(10000L);
 			TerminalView afterResizeTerminalView = afterResize.adapter.getCurrentTerminalView();
 			if (afterResizeTerminalView == null) {
-				afterResizeTerminalView = afterResize.findViewById(R.id.terminal_view);
+				afterResizeTerminalView = waitForTerminalView(afterResize, 10_000L);
 			}
 
 			BufferPosition tokenPosAfterResize = waitForTokenPosition(afterResizeTerminalView, token, 5000L);
@@ -1092,6 +1121,77 @@ public class TerminalSelectionCopyTest {
 	}
 
 	@Test
+	public void consoleStillRendersAfterDensityChangeAndKeyboardToggle() throws Exception {
+		Context testContext = ApplicationProvider.getApplicationContext();
+
+		SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
+		boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);
+		String wasScrollback = settings.getString(PreferenceConstants.SCROLLBACK, "140");
+
+		try {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+					.putString(PreferenceConstants.SCROLLBACK, STRESS_SCROLLBACK_LINES)
+					.commit();
+
+			startNewLocalConnectionWithoutIntents("Local");
+			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
+
+			ensureSoftKeyboardVisibility(consoleActivity, true);
+
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
+			final String token = "DENSITYRENDERTOKEN";
+			insertTerminalOutput(terminalView, "\r\n" + token + "\r\n");
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			BufferPosition tokenPos = waitForTokenPosition(terminalView, token, 5000L);
+			scrollViewportToRow(terminalView, tokenPos.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(terminalView, tokenPos, token);
+
+			// Some foldables can switch display density when moving between folded/unfolded screens.
+			// Ensure the console still renders and survives an IME toggle after a density change.
+			execShellCommand("wm density 320");
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(2500L));
+
+			ConsoleActivity afterDensity = waitForConsoleActivity(20000L);
+			assertConsoleHasConnectedHosts(afterDensity, 10000L);
+
+			TerminalView afterDensityTerminalView = afterDensity.adapter.getCurrentTerminalView();
+			if (afterDensityTerminalView == null) {
+				afterDensityTerminalView = waitForTerminalView(afterDensity, 20_000L);
+			}
+
+			BufferPosition tokenPosAfterDensity = waitForTokenPosition(afterDensityTerminalView, token, 5000L);
+			scrollViewportToRow(afterDensityTerminalView, tokenPosAfterDensity.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(afterDensityTerminalView, tokenPosAfterDensity, token);
+
+			ensureSoftKeyboardVisibility(afterDensity, false);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(2000L));
+
+			TerminalView afterHideTerminalView = afterDensity.adapter.getCurrentTerminalView();
+			if (afterHideTerminalView == null) {
+				afterHideTerminalView = afterDensityTerminalView;
+			}
+
+			BufferPosition tokenPosAfterHide = waitForTokenPosition(afterHideTerminalView, token, 5000L);
+			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
+		} finally {
+			try {
+				execShellCommand("wm density reset");
+			} catch (Throwable ignored) {
+			}
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
+					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
+					.commit();
+		}
+	}
+
+	@Test
 	public void selectionCopyRemainsCalibratedIfTextViewAttemptsToScrollDuringLongPress() {
 		Context testContext = ApplicationProvider.getApplicationContext();
 
@@ -1107,7 +1207,7 @@ public class TerminalSelectionCopyTest {
 
 			startNewLocalConnectionWithoutIntents("Local");
 			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
-			TerminalView terminalView = consoleActivity.findViewById(R.id.terminal_view);
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
 
 			ensureSoftKeyboardVisibility(consoleActivity, true);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
@@ -1247,6 +1347,10 @@ public class TerminalSelectionCopyTest {
 			@Override
 			public void run() {
 				Activity activity = (Activity) terminalView.getContext();
+				View keyboardGroup = activity.findViewById(R.id.keyboard_group);
+				if (keyboardGroup != null) {
+					keyboardGroup.setVisibility(View.GONE);
+				}
 				View root = activity.getWindow().getDecorView();
 
 				int[] rootLoc = new int[2];
@@ -1478,18 +1582,17 @@ public class TerminalSelectionCopyTest {
 			getInstrumentation().runOnMainSync(new Runnable() {
 				@Override
 				public void run() {
-					View candidate = consoleActivity.findViewById(R.id.terminal_view);
-					if (candidate instanceof TerminalView) {
-						view[0] = (TerminalView) candidate;
+					if (consoleActivity.adapter != null) {
+						view[0] = consoleActivity.adapter.getCurrentTerminalView();
 					}
 				}
 			});
-			if (view[0] != null) {
+			if (view[0] != null && view[0].getWidth() > 0 && view[0].getHeight() > 0) {
 				return view[0];
 			}
 			SystemClock.sleep(50L);
 		}
-		throw new AssertionError("Timed out waiting for TerminalView to be present");
+		throw new AssertionError("Timed out waiting for current TerminalView to be present");
 	}
 
 	private static void assertOverlayScrollAlignedWithWindowBase(final TerminalView terminalView) {
@@ -1744,6 +1847,10 @@ public class TerminalSelectionCopyTest {
 			@Override
 			public void run() {
 				Activity activity = (Activity) terminalView.getContext();
+				View keyboardGroup = activity.findViewById(R.id.keyboard_group);
+				if (keyboardGroup != null) {
+					keyboardGroup.setVisibility(View.GONE);
+				}
 				View root = activity.getWindow().getDecorView();
 
 				int[] rootLoc = new int[2];
@@ -1791,6 +1898,10 @@ public class TerminalSelectionCopyTest {
 			@Override
 			public void run() {
 				Activity activity = (Activity) terminalView.getContext();
+				View keyboardGroup = activity.findViewById(R.id.keyboard_group);
+				if (keyboardGroup != null) {
+					keyboardGroup.setVisibility(View.GONE);
+				}
 				View root = activity.getWindow().getDecorView();
 
 				int[] rootLoc = new int[2];
@@ -1841,6 +1952,10 @@ public class TerminalSelectionCopyTest {
 			@Override
 			public void run() {
 				Activity activity = (Activity) terminalView.getContext();
+				View keyboardGroup = activity.findViewById(R.id.keyboard_group);
+				if (keyboardGroup != null) {
+					keyboardGroup.setVisibility(View.GONE);
+				}
 				View root = activity.getWindow().getDecorView();
 
 				int[] rootLoc = new int[2];

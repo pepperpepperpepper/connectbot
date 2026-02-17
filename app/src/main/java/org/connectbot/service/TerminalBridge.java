@@ -624,28 +624,37 @@ public class TerminalBridge implements VDUDisplay {
 		ClipboardManager clipboard = (ClipboardManager) parent.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
 		keyListener.setClipboardManager(clipboard);
 
+		// The backing bitmap is sized in pixels (not rows/cols). Even if the computed terminal grid
+		// size doesn't change (integer division), we must still reallocate/redraw the bitmap when
+		// the parent view's pixel size changes (e.g., during IME/insets or fold/unfold transitions).
+		boolean newBitmap = (bitmap == null);
+		if (bitmap != null) {
+			newBitmap = (bitmap.getWidth() != width || bitmap.getHeight() != height);
+		}
+
+		boolean gridSizeChanged = false;
 		if (!forcedSize) {
 			// recalculate buffer size
-			int newColumns, newRows;
+			int newColumns;
+			int newRows;
 
 			newColumns = width / charWidth;
 			newRows = height / charHeight;
 
-			// If nothing has changed in the terminal dimensions and not an intial
-			// draw then don't blow away scroll regions and such.
-			if (newColumns == columns && newRows == rows)
+			// If nothing has changed in the terminal dimensions (and the backing bitmap still
+			// matches), then don't blow away scroll regions and such.
+			if (!newBitmap && newColumns == columns && newRows == rows)
 				return;
 
-			columns = newColumns;
-			rows = newRows;
-			refreshOverlayFontSize();
+			gridSizeChanged = (newColumns != columns || newRows != rows);
+			if (gridSizeChanged) {
+				columns = newColumns;
+				rows = newRows;
+				refreshOverlayFontSize();
+			}
 		}
 
 		// reallocate new bitmap if needed
-		boolean newBitmap = (bitmap == null);
-		if (bitmap != null)
-			newBitmap = (bitmap.getWidth() != width || bitmap.getHeight() != height);
-
 		if (newBitmap) {
 			discardBitmap();
 			bitmap = Bitmap.createBitmap(width, height, Config.ARGB_8888);
@@ -670,9 +679,12 @@ public class TerminalBridge implements VDUDisplay {
 		}
 
 		try {
-			// request a terminal pty resize
-			synchronized (buffer) {
-				buffer.setScreenSize(columns, rows, true);
+			// request a terminal pty resize when the character grid changes, or when the size is
+			// being forced (forced-size mode expects the buffer to match the configured cols/rows).
+			if (gridSizeChanged || forcedSize) {
+				synchronized (buffer) {
+					buffer.setScreenSize(columns, rows, true);
+				}
 			}
 
 			if (transport != null)
@@ -682,7 +694,7 @@ public class TerminalBridge implements VDUDisplay {
 		}
 
 		// redraw local output if we don't have a sesson to receive our resize request
-		if (transport == null) {
+		if (transport == null && (gridSizeChanged || forcedSize)) {
 			synchronized (localOutput) {
 				synchronized (buffer) {
 					((vt320) buffer).reset();
@@ -700,7 +712,11 @@ public class TerminalBridge implements VDUDisplay {
 		onDraw();
 		redraw();
 
-		parent.notifyUser(String.format("%d x %d", columns, rows));
+		// Only surface a resize toast when the character grid changes (or when size is forced).
+		// Pixel-only size changes (e.g., small insets shifts) can happen frequently.
+		if (gridSizeChanged || forcedSize) {
+			parent.notifyUser(String.format("%d x %d", columns, rows));
+		}
 
 		Log.i(TAG, String.format("parentChanged() now width=%d, height=%d", columns, rows));
 	}
@@ -856,6 +872,21 @@ public class TerminalBridge implements VDUDisplay {
 
 	public int getLastDrawnScreenBase() {
 		return lastDrawnScreenBase;
+	}
+
+	/**
+	 * Forces the next draw pass to repaint the entire terminal into the backing bitmap.
+	 *
+	 * Some device/layout transitions (fold/unfold, IME insets) can leave the currently displayed
+	 * bitmap stale or blank even though the buffer still has content. Marking the buffer dirty and
+	 * invalidating the parent ensures we repaint promptly.
+	 */
+	public void requestFullRedraw() {
+		synchronized (buffer) {
+			fullRedraw = true;
+			buffer.update[0] = true;
+		}
+		redraw();
 	}
 
 	@Override

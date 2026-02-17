@@ -380,6 +380,12 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 		super.onSizeChanged(w, h, oldw, oldh);
 
 		bridge.parentChanged(this);
+		// TerminalBridge.parentChanged() can adjust buffer.windowBase during resizes. Keep the
+		// selection overlay's scroll position pinned to windowBase so hit-testing stays calibrated
+		// even if no new output arrives after the resize.
+		if (terminalTextViewOverlay != null) {
+			terminalTextViewOverlay.scrollTo(0, 0);
+		}
 
 		scaleCursors();
 	}
@@ -402,25 +408,34 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 						terminalTextViewOverlay.setTextScaleX(1.0f);
 						final String sample = "XXXXXXXXXXXXXXXXXXXX"; // average over many glyphs for stability
 						float measuredCharWidth = terminalTextViewOverlay.getPaint().measureText(sample) / sample.length();
-						if (measuredCharWidth > 0f) {
-							float scaleX = 1.0f;
-							for (int i = 0; i < 3; i++) {
-								float factor = bridge.charWidth / measuredCharWidth;
-								scaleX *= factor;
-								terminalTextViewOverlay.setTextScaleX(scaleX);
-								measuredCharWidth = terminalTextViewOverlay.getPaint().measureText(sample) / sample.length();
-								if (Math.abs(measuredCharWidth - bridge.charWidth) < 0.01f) {
-									break;
+							if (measuredCharWidth > 0f) {
+								float scaleX = 1.0f;
+								for (int i = 0; i < 3; i++) {
+									float factor = bridge.charWidth / measuredCharWidth;
+									scaleX *= factor;
+									terminalTextViewOverlay.setTextScaleX(scaleX);
+									measuredCharWidth = terminalTextViewOverlay.getPaint().measureText(sample) / sample.length();
+									if (Math.abs(measuredCharWidth - bridge.charWidth) < 0.01f) {
+										break;
+									}
+									if (measuredCharWidth <= 0f) {
+										break;
+									}
 								}
-								if (measuredCharWidth <= 0f) {
-									break;
-								}
+							}
+
+							// Align the TextView's baseline to the terminal bitmap grid. TextView uses its own
+							// font metrics (often based on ascent) while the terminal draws using fm.top.
+							// Without this, selection highlights/handles can drift between lines.
+							final int currentBaseline = terminalTextViewOverlay.getBaseline();
+							if (currentBaseline >= 0) {
+								final int desiredBaseline = -bridge.getCharTop();
+								terminalTextViewOverlay.setTranslationY((float) (desiredBaseline - currentBaseline));
 							}
 						}
 					}
-				}
-			});
-		}
+				});
+			}
 
 	private void scaleCursors() {
 		// Create a scale matrix to scale our 1x1 representation of the cursor
@@ -430,6 +445,16 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 
 	@Override
 	public void onDraw(Canvas canvas) {
+		// Some foldable/IME transitions can drop size-change callbacks. Ensure the bridge bitmap is
+		// present and matches the current view size before drawing.
+		final Bitmap bitmap = bridge.bitmap;
+		if ((bitmap == null
+				|| bitmap.getWidth() != getWidth()
+				|| bitmap.getHeight() != getHeight())
+				&& getWidth() > 0 && getHeight() > 0) {
+			bridge.parentChanged(this);
+		}
+
 		if (bridge.bitmap != null) {
 			// draw the bitmap
 			bridge.onDraw();

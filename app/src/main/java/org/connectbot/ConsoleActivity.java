@@ -146,6 +146,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private boolean pagerRepopulateQueued = false;
 	private boolean pagerRepopulateDelayedQueued = false;
 	private int pagerRecoveryAttempts = 0;
+	private long pagerMissingOrZeroSinceUptimeMillis = 0L;
 	@Nullable private Boolean lastSoftKeyboardVisible = null;
 
 	private int lastScreenWidthDp = -1;
@@ -230,30 +231,32 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		if (currentTerminalView == null
 				|| currentTerminalView.getWidth() <= 0
 				|| currentTerminalView.getHeight() <= 0) {
-			if (!hasRecentDisplayResize()) {
-				// During normal IME animations it's expected for ViewPager/child views to briefly
-				// report missing/0-sized measurements. Don't recreate pages unless we're recovering
-				// from a recent fold/unfold (display size) transition.
-				pagerRecoveryAttempts = 0;
-				return;
+			if (pagerMissingOrZeroSinceUptimeMillis == 0L) {
+				pagerMissingOrZeroSinceUptimeMillis = SystemClock.uptimeMillis();
 			}
 
 			pagerRecoveryAttempts++;
-			if (pagerRecoveryAttempts < 3) {
+			// During normal IME animations it's expected for ViewPager/child views to briefly report
+			// missing/0-sized measurements. Only rebuild pages if the state persists for a bit.
+			if ((SystemClock.uptimeMillis() - pagerMissingOrZeroSinceUptimeMillis) < 1500L
+					&& pagerRecoveryAttempts < 8) {
 				queueEnsurePagerPopulatedDelayed();
 				return;
 			}
 			pagerRecoveryAttempts = 0;
+			pagerMissingOrZeroSinceUptimeMillis = 0L;
+			pager.setAdapter(null);
 			pager.setAdapter(adapter);
 			pager.setCurrentItem(current, false);
 			pager.requestLayout();
 			return;
 		}
 		pagerRecoveryAttempts = 0;
+		pagerMissingOrZeroSinceUptimeMillis = 0L;
 
 		// If the view is present but the bridge bitmap is missing or mismatched, force a redraw.
 		// This is a low-frequency recovery path (normal resizes go through TerminalView.onSizeChanged()).
-		if (hasRecentDisplayResize() && currentTerminalView.bridge != null) {
+		if (currentTerminalView.bridge != null) {
 			android.graphics.Bitmap bitmap = currentTerminalView.bridge.bitmap;
 			if (bitmap == null
 					|| bitmap.getWidth() != currentTerminalView.getWidth()
@@ -263,17 +266,25 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			}
 		}
 
-		// After a resize, ViewPager can end up scrolled away from the current item even though the
-		// child view still exists. Snap back to the current page.
-		final int width = pager.getWidth();
-		if (width > 0) {
-			final int expectedScrollX = current * width;
-			final int delta = Math.abs(pager.getScrollX() - expectedScrollX);
-			if (delta >= (width / 2)) {
-				pager.setCurrentItem(current, false);
+			// After a resize, ViewPager can end up scrolled away from the current item even though the
+			// child view still exists. Snap back to the current page.
+			final int width = pager.getWidth();
+			if (width > 0) {
+				final int expectedScrollX = current * width;
+				final int delta = Math.abs(pager.getScrollX() - expectedScrollX);
+				if (delta >= (width / 2)) {
+					pager.setCurrentItem(current, false);
+				}
+			}
+
+			// Some foldable/IME transitions can leave the terminal bitmap stale or blank even though
+			// the session is still connected. During the post-resize recovery window, proactively
+			// request a full redraw so the user doesn't get stuck on a black console.
+			if (hasRecentDisplayResize() && currentTerminalView.bridge != null) {
+				currentTerminalView.bridge.requestFullRedraw();
+				currentTerminalView.invalidate();
 			}
 		}
-	}
 
 	private final ServiceConnection connection = new ServiceConnection() {
 		@Override
@@ -634,6 +645,23 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 				});
 		adapter = new TerminalPagerAdapter();
 		pager.setAdapter(adapter);
+		pager.addOnLayoutChangeListener(new View.OnLayoutChangeListener() {
+			@Override
+			public void onLayoutChange(View v, int left, int top, int right, int bottom, int oldLeft, int oldTop,
+					int oldRight, int oldBottom) {
+				if (adapter == null || adapter.getCount() <= 0) {
+					return;
+				}
+
+				TerminalView currentTerminalView = adapter.getCurrentTerminalView();
+				if (pager.getChildCount() == 0
+						|| currentTerminalView == null
+						|| currentTerminalView.getWidth() <= 0
+						|| currentTerminalView.getHeight() <= 0) {
+					queueEnsurePagerPopulated();
+				}
+			}
+		});
 
 		empty = findViewById(android.R.id.empty);
 
@@ -718,9 +746,10 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		mKeyboardButton.setOnClickListener(new OnClickListener() {
 			@Override
 			public void onClick(View view) {
-				View terminal = adapter.getCurrentTerminalView();
-				if (terminal == null)
+				TerminalView terminal = adapter.getCurrentTerminalView();
+				if (terminal == null) {
 					return;
+				}
 				InputMethodManager inputMethodManager =
 					(InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
 				inputMethodManager.toggleSoftInputFromWindow(terminal.getApplicationWindowToken(),
@@ -732,6 +761,8 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 				// during fold/unfold transitions. Always queue a pager sanity check after the user taps
 				// the keyboard toggle.
 				queueEnsurePagerPopulated();
+				terminal.bridge.requestFullRedraw();
+				terminal.invalidate();
 			}
 		});
 

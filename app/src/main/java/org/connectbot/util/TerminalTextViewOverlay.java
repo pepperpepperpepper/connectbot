@@ -25,6 +25,7 @@ import android.content.Context;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.os.Build;
+import android.os.SystemClock;
 import androidx.core.view.MotionEventCompat;
 import android.text.ClipboardManager;
 import android.text.Selection;
@@ -35,6 +36,7 @@ import android.view.KeyEvent;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.MotionEvent;
+import android.view.ViewConfiguration;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.widget.TextView;
@@ -53,6 +55,7 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	private ActionMode selectionActionMode;
 	private ClipboardManager clipboard;
 	private boolean isTouchDown = false;
+	private long touchDownUptimeMillis = 0L;
 
 	private int oldBufferHeight = 0;
 	private int oldScrollY = -1;
@@ -65,32 +68,34 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	// To match common terminal UX, freeze the viewport (windowBase) while a selection is starting
 	// or active *if* the user started at the bottom.
 	private boolean freezeWindowBase = false;
-	private int frozenWindowBase = -1;
 	private boolean restoreBottomOnUnfreeze = false;
 
 	private void maybeBeginFreezeWindowBase() {
 		synchronized (terminalView.bridge.buffer) {
 			VDUBuffer vb = terminalView.bridge.getVDUBuffer();
+			final int currentWindowBase = vb.getWindowBase();
+			final boolean atBottomNow = currentWindowBase == vb.screenBase;
 			final int drawnWindowBase = terminalView.bridge.getLastDrawnWindowBase();
 			final int drawnScreenBase = terminalView.bridge.getLastDrawnScreenBase();
 			final boolean hasDrawnViewport = drawnWindowBase >= 0 && drawnScreenBase >= 0;
 
-			// If the buffer advanced since the last frame was rendered (common under heavy output),
-			// selection should match what the user sees (the last-drawn bitmap), not the newest
-			// buffer state.
-			int visibleWindowBase = hasDrawnViewport ? drawnWindowBase : vb.getWindowBase();
-			if (visibleWindowBase != vb.getWindowBase()) {
-				terminalView.bridge.buffer.setWindowBase(visibleWindowBase);
-				visibleWindowBase = vb.getWindowBase(); // clamp
+			if (atBottomNow && hasDrawnViewport) {
+				int visibleWindowBase = currentWindowBase;
+				// If the buffer advanced since the last frame was rendered (common under heavy output),
+				// selection should match what the user sees (the last-drawn bitmap), not the newest
+				// buffer state.
+				visibleWindowBase = drawnWindowBase;
+				if (visibleWindowBase != currentWindowBase) {
+					terminalView.bridge.buffer.setWindowBase(visibleWindowBase);
+				}
 			}
 
-			boolean atBottom = hasDrawnViewport ? (drawnWindowBase == drawnScreenBase)
-					: (visibleWindowBase == vb.screenBase);
-
-			freezeWindowBase = atBottom;
-			frozenWindowBase = atBottom ? visibleWindowBase : -1;
-			restoreBottomOnUnfreeze = atBottom;
-			terminalView.bridge.buffer.setFreezeWindowBase(atBottom);
+			// Only freeze auto-scroll when the user started selection at the bottom. If they're
+			// intentionally scrolled back, preserve their scrollback viewport (don't snap windowBase
+			// based on stale last-drawn values).
+			freezeWindowBase = atBottomNow;
+			restoreBottomOnUnfreeze = atBottomNow;
+			terminalView.bridge.buffer.setFreezeWindowBase(atBottomNow);
 		}
 	}
 
@@ -109,37 +114,7 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 		terminalView.bridge.redraw();
 
 		freezeWindowBase = false;
-		frozenWindowBase = -1;
 		restoreBottomOnUnfreeze = false;
-	}
-
-	private void enforceFrozenWindowBaseIfNeeded() {
-		if (!freezeWindowBase) {
-			return;
-		}
-		if (!isTouchDown && selectionActionMode == null) {
-			return;
-		}
-
-		synchronized (terminalView.bridge.buffer) {
-			VDUBuffer vb = terminalView.bridge.getVDUBuffer();
-			int target = frozenWindowBase;
-			if (target < 0) {
-				return;
-			}
-			// Clamp to a valid range in case screenBase advances or scrollback saturates.
-			if (target > vb.screenBase) {
-				target = vb.screenBase;
-			}
-			if (target < 0) {
-				target = 0;
-			}
-
-			int current = vb.getWindowBase();
-			if (current != target) {
-				terminalView.bridge.buffer.setWindowBase(target);
-			}
-		}
 	}
 
 	public TerminalTextViewOverlay(Context context, TerminalView terminalView) {
@@ -206,8 +181,6 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	 * rest of the buffer.
 	 */
 	public void onBufferChanged() {
-		enforceFrozenWindowBaseIfNeeded();
-
 		// While the user is holding their finger down waiting for a long-press selection to begin,
 		// avoid mutating the overlay (append/scroll). This can cancel long-press selection under
 		// continuous output.
@@ -260,12 +233,23 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	public boolean onPreDraw() {
 		boolean superResult = super.onPreDraw();
 
+		// Keep the overlay scroll pinned to the terminal viewport. This is a safety net for any
+		// path that updates buffer.windowBase without calling refreshTextFromBuffer() or
+		// onBufferChanged() (e.g., programmatic scrollback changes).
+		final int lineHeight = Math.max(1, getLineHeight());
+		final int expectedScrollY;
+		synchronized (terminalView.bridge.buffer) {
+			expectedScrollY = terminalView.bridge.buffer.getWindowBase() * lineHeight;
+		}
+
 		if (oldScrollY >= 0) {
 			// Apply pending scroll without feeding back into buffer.windowBase. The buffer is the source
 			// of truth here; this is only to align the overlay's visible (invisible) scroll position
 			// once layout is ready.
 			super.scrollTo(0, oldScrollY);
 			oldScrollY = -1;
+		} else if (!(isTouchDown && selectionActionMode == null) && getScrollY() != expectedScrollY) {
+			super.scrollTo(0, expectedScrollY);
 		}
 
 		return superResult;
@@ -337,15 +321,34 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 	public boolean onTouchEvent(MotionEvent event) {
 		if (event.getAction() == MotionEvent.ACTION_DOWN) {
 			isTouchDown = true;
+			touchDownUptimeMillis = SystemClock.uptimeMillis();
 			maybeBeginFreezeWindowBase();
 			// Selection may be beginning. Sync the TextView with the buffer.
 			refreshTextFromBuffer();
 		} else if (event.getAction() == MotionEvent.ACTION_UP || event.getAction() == MotionEvent.ACTION_CANCEL) {
 			isTouchDown = false;
+			final long heldMillis = (touchDownUptimeMillis > 0L)
+					? (SystemClock.uptimeMillis() - touchDownUptimeMillis)
+					: 0L;
+			touchDownUptimeMillis = 0L;
 			// If selection never started, release any freeze and return to bottom so auto-scroll
 			// resumes normally.
 			if (selectionActionMode == null) {
-				unfreezeWindowBaseIfNeeded();
+				// Under continuous output / heavy UI load, the framework can be slow to create the
+				// selection ActionMode. If the user held long enough to be a long-press attempt, delay
+				// unfreezing briefly so selection has a chance to start before we snap back to bottom.
+				if (heldMillis >= ViewConfiguration.getLongPressTimeout()) {
+					postDelayed(new Runnable() {
+						@Override
+						public void run() {
+							if (selectionActionMode == null) {
+								unfreezeWindowBaseIfNeeded();
+							}
+						}
+					}, 200L);
+				} else {
+					unfreezeWindowBaseIfNeeded();
+				}
 			}
 			final int windowBase;
 			synchronized (terminalView.bridge.buffer) {
@@ -353,6 +356,8 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 			}
 			super.scrollTo(0, windowBase * getLineHeight());
 		}
+
+		boolean terminalViewHandled = false;
 
 		// Mouse input is treated differently:
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.ICE_CREAM_SANDWICH &&
@@ -362,12 +367,10 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 			}
 			terminalView.viewPager.setPagingEnabled(true);
 		} else {
-			if (terminalView.onTouchEvent(event)) {
-				return true;
-			}
+			terminalViewHandled = terminalView.onTouchEvent(event);
 		}
 
-		return super.onTouchEvent(event);
+		return super.onTouchEvent(event) || terminalViewHandled;
 	}
 
 	@Override
