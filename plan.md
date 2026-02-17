@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.20` (`10914021`) to afteroid/F-Droid repo (Feb 16, 2026).
+- Published **google** flavor `1.9.13.22` (`10914023`) to afteroid/F-Droid repo (Feb 17, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -211,6 +211,11 @@ Capture:
   - `ConsoleActivity` also queues the pager sanity check directly from the keyboard toggle button (some devices don’t reliably report IME visibility via `getWindowVisibleDisplayFrame` during fold/unfold).
   - Regression test `consoleStillRendersAfterDisplayResizeAndKeyboardToggle` now validates the **drawn `TerminalView` output** (not just the bridge backing bitmap) so zero-sized/off-screen pages are caught.
 - Published in: `1.9.13.20` (`10914021`) (Feb 16, 2026).
+
+- User report (foldables, Feb 17, 2026): after unfolding, hiding the keyboard can still leave the **terminal view blank/black**.
+- Additional mitigation (v1.9.13 build):
+  - Add a post-layout recovery pass on IME visibility toggles + config changes to re-bind the current `TerminalBridge` to the visible `TerminalView` (`parentChanged` + `requestFullRedraw`) and snap `ViewPager` back to the current item.
+- Published in: `1.9.13.22` (`10914023`) (Feb 17, 2026).
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
