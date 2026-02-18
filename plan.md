@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.22` (`10914023`) to afteroid/F-Droid repo (Feb 17, 2026).
+- Published **google** flavor `1.9.13.23` (`10914024`) to afteroid/F-Droid repo (Feb 18, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### If the bug still reproduces on-device
@@ -216,6 +216,14 @@ Capture:
 - Additional mitigation (v1.9.13 build):
   - Add a post-layout recovery pass on IME visibility toggles + config changes to re-bind the current `TerminalBridge` to the visible `TerminalView` (`parentChanged` + `requestFullRedraw`) and snap `ViewPager` back to the current item.
 - Published in: `1.9.13.22` (`10914023`) (Feb 17, 2026).
+
+- User report (foldables, Feb 18, 2026): on Pixel Fold in **fullscreen** mode, after unfolding (display resize), hiding the keyboard via ConnectBot’s toggle can still blank the terminal.
+- Additional mitigation (v1.9.13 build):
+  - Add a short-lived recovery monitor (poll + rebind) after fold/unfold + IME toggles to catch delayed `ViewPager`/layout failures.
+  - Re-apply `FLAG_FULLSCREEN` on resume/config/focus changes (some devices clear it during IME transitions).
+  - Re-bind `TerminalBridge` on `TerminalView` attach/detach and force full redraw.
+  - Add regression test: `TerminalSelectionCopyTest#consoleStillRendersInFullscreenAfterDisplayResizeAndKeyboardToggle`.
+- Published in: `1.9.13.23` (`10914024`) (Feb 18, 2026).
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
