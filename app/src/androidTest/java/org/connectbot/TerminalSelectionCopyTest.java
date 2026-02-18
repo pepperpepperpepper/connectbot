@@ -1121,6 +1121,82 @@ public class TerminalSelectionCopyTest {
 	}
 
 	@Test
+	public void consoleStillRendersInFullscreenAfterDisplayResizeAndKeyboardToggle() throws Exception {
+		Context testContext = ApplicationProvider.getApplicationContext();
+
+		SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
+		boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);
+		String wasScrollback = settings.getString(PreferenceConstants.SCROLLBACK, "140");
+		boolean wasFullscreen = settings.getBoolean(PreferenceConstants.FULLSCREEN, false);
+		boolean wasTitlebarHide = settings.getBoolean(PreferenceConstants.TITLEBARHIDE, false);
+
+		try {
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+					.putString(PreferenceConstants.SCROLLBACK, STRESS_SCROLLBACK_LINES)
+					.putBoolean(PreferenceConstants.FULLSCREEN, true)
+					.putBoolean(PreferenceConstants.TITLEBARHIDE, true)
+					.commit();
+
+			startNewLocalConnectionWithoutIntents("Local");
+			ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
+
+			ensureSoftKeyboardVisibility(consoleActivity, true);
+
+			TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
+			final String token = "RENDERTOKEN_FULL";
+			insertTerminalOutput(terminalView, "\r\n" + token + "\r\n");
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+			BufferPosition tokenPos = waitForTokenPosition(terminalView, token, 5000L);
+			scrollViewportToRow(terminalView, tokenPos.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(terminalView, tokenPos, token);
+
+			// Simulate foldable resize/unfold.
+			execShellCommand("wm size 1200x2000");
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(1500L));
+
+			ConsoleActivity afterResize = waitForConsoleActivity(10000L);
+			TerminalView afterResizeTerminalView = afterResize.adapter.getCurrentTerminalView();
+			if (afterResizeTerminalView == null) {
+				afterResizeTerminalView = waitForTerminalView(afterResize, 10_000L);
+			}
+
+			BufferPosition tokenPosAfterResize = waitForTokenPosition(afterResizeTerminalView, token, 5000L);
+			scrollViewportToRow(afterResizeTerminalView, tokenPosAfterResize.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(afterResizeTerminalView, tokenPosAfterResize, token);
+
+			// Reported repro on foldables: after resize/unfold in fullscreen mode, hiding the keyboard
+			// can blank the console.
+			ensureSoftKeyboardVisibility(afterResize, false);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(2000L));
+
+			TerminalView afterHideTerminalView = afterResize.adapter.getCurrentTerminalView();
+			if (afterHideTerminalView == null) {
+				afterHideTerminalView = afterResizeTerminalView;
+			}
+
+			BufferPosition tokenPosAfterHide = waitForTokenPosition(afterHideTerminalView, token, 5000L);
+			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
+			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
+		} finally {
+			try {
+				execShellCommand("wm size reset");
+			} catch (Throwable ignored) {
+			}
+			settings.edit()
+					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
+					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
+					.putBoolean(PreferenceConstants.FULLSCREEN, wasFullscreen)
+					.putBoolean(PreferenceConstants.TITLEBARHIDE, wasTitlebarHide)
+					.commit();
+		}
+	}
+
+	@Test
 	public void consoleStillRendersAfterDensityChangeAndKeyboardToggle() throws Exception {
 		Context testContext = ApplicationProvider.getApplicationContext();
 

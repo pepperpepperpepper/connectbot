@@ -289,6 +289,27 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 		setLayerType(View.LAYER_TYPE_SOFTWARE, null);
 	}
 
+	@Override
+	protected void onAttachedToWindow() {
+		super.onAttachedToWindow();
+		// Some device/window transitions can drop draw/layout callbacks. Re-assert software rendering
+		// and re-bind the bridge once the view is attached again.
+		setLayerTypeToSoftware();
+		post(new Runnable() {
+			@Override
+			public void run() {
+				bridge.parentChanged(TerminalView.this);
+				bridge.requestFullRedraw();
+			}
+		});
+	}
+
+	@Override
+	protected void onDetachedFromWindow() {
+		super.onDetachedFromWindow();
+		bridge.parentDestroyed();
+	}
+
 	public void copyCurrentSelectionToClipboard() {
 		if (terminalTextViewOverlay != null) {
 			terminalTextViewOverlay.copyCurrentSelectionToClipboard();

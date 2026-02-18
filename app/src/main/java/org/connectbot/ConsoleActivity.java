@@ -97,6 +97,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private static final int KEYBOARD_REPEAT = 100;
 	private static final String STATE_SELECTED_URI = "selectedUri";
 	private static final long DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS = 10_000L;
+	private static final long TERMINAL_RECOVERY_MONITOR_INTERVAL_MILLIS = 250L;
 	protected TerminalViewPager pager = null;
 	@Nullable
 	protected TerminalManager bound = null;
@@ -159,6 +160,53 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private boolean inActionBarMenu = false;
 	private boolean titleBarHide;
 	private boolean keyboardAlwaysVisible = false;
+
+	private boolean terminalRecoveryMonitorRunning = false;
+	private long terminalRecoveryMonitorEndUptimeMillis = 0L;
+	private final Runnable terminalRecoveryMonitor = new Runnable() {
+		@Override
+		public void run() {
+			if (pager == null) {
+				terminalRecoveryMonitorRunning = false;
+				return;
+			}
+
+			recoverCurrentTerminalNow();
+
+			if (SystemClock.uptimeMillis() < terminalRecoveryMonitorEndUptimeMillis) {
+				pager.postDelayed(this, TERMINAL_RECOVERY_MONITOR_INTERVAL_MILLIS);
+			} else {
+				terminalRecoveryMonitorRunning = false;
+			}
+		}
+	};
+
+	private void startTerminalRecoveryMonitor(long durationMillis) {
+		if (pager == null) {
+			return;
+		}
+
+		final long end = SystemClock.uptimeMillis() + durationMillis;
+		if (end > terminalRecoveryMonitorEndUptimeMillis) {
+			terminalRecoveryMonitorEndUptimeMillis = end;
+		}
+		if (terminalRecoveryMonitorRunning) {
+			return;
+		}
+		terminalRecoveryMonitorRunning = true;
+		pager.post(terminalRecoveryMonitor);
+	}
+
+	private void applyFullscreenFlagFromPreferences() {
+		if (prefs == null) {
+			return;
+		}
+		if (prefs.getBoolean(PreferenceConstants.FULLSCREEN, false)) {
+			getWindow().addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+		} else {
+			getWindow().clearFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+		}
+	}
 
 	private void queueRecoverCurrentTerminalDelayed(long delayMillis) {
 		if (pager == null) {
@@ -660,10 +708,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		lastScreenLayout = config.screenLayout;
 
 		// hide status bar if requested by user
-		if (prefs.getBoolean(PreferenceConstants.FULLSCREEN, false)) {
-			getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
-					WindowManager.LayoutParams.FLAG_FULLSCREEN);
-		}
+		applyFullscreenFlagFromPreferences();
 
 		// TODO find proper way to disable volume key beep if it exists.
 		setVolumeControlStream(AudioManager.STREAM_MUSIC);
@@ -798,21 +843,27 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 					}
 				InputMethodManager inputMethodManager =
 					(InputMethodManager) getSystemService(Context.INPUT_METHOD_SERVICE);
-				inputMethodManager.toggleSoftInputFromWindow(terminal.getApplicationWindowToken(),
-					InputMethodManager.SHOW_FORCED, 0);
-				terminal.requestFocus();
-				hideEmulatedKeys();
+					inputMethodManager.toggleSoftInputFromWindow(terminal.getApplicationWindowToken(),
+						InputMethodManager.SHOW_FORCED, 0);
+					terminal.requestFocus();
+					hideEmulatedKeys();
+					applyFullscreenFlagFromPreferences();
 
-					// Some devices don't reliably report IME visibility changes via getWindowVisibleDisplayFrame
-					// during fold/unfold transitions. Always queue a pager sanity check after the user taps
-					// the keyboard toggle.
-					queueEnsurePagerPopulated();
-					terminal.bridge.requestFullRedraw();
-					terminal.invalidate();
-					queueRecoverCurrentTerminalDelayed(350L);
-					queueRecoverCurrentTerminalDelayed(1200L);
-				}
-			});
+						// Some devices don't reliably report IME visibility changes via getWindowVisibleDisplayFrame
+						// during fold/unfold transitions. Always queue a pager sanity check after the user taps
+						// the keyboard toggle.
+						queueEnsurePagerPopulated();
+						terminal.bridge.requestFullRedraw();
+						terminal.invalidate();
+						queueRecoverCurrentTerminalDelayed(350L);
+						queueRecoverCurrentTerminalDelayed(1200L);
+						queueRecoverCurrentTerminalDelayed(2500L);
+						queueRecoverCurrentTerminalDelayed(5000L);
+						if (hasRecentDisplayResize()) {
+							startTerminalRecoveryMonitor(DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS);
+						}
+					}
+				});
 
 		findViewById(R.id.button_ctrl).setOnClickListener(emulatedKeysListener);
 		findViewById(R.id.button_esc).setOnClickListener(emulatedKeysListener);
@@ -932,15 +983,21 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 					// Only trigger the recovery flow when IME visibility actually toggles. Other layout
 					// changes (selection handles/action mode, in-app overlays) can generate lots of
-						// global layout passes and should not be treated as pager corruption.
-						if (lastSoftKeyboardVisible == null || lastSoftKeyboardVisible.booleanValue() != isKeyboardOpen) {
-							lastSoftKeyboardVisible = isKeyboardOpen;
-							queueEnsurePagerPopulated();
-							queueRecoverCurrentTerminalDelayed(0L);
-							queueRecoverCurrentTerminalDelayed(500L);
+					// global layout passes and should not be treated as pager corruption.
+					if (lastSoftKeyboardVisible == null || lastSoftKeyboardVisible.booleanValue() != isKeyboardOpen) {
+						lastSoftKeyboardVisible = isKeyboardOpen;
+						queueEnsurePagerPopulated();
+						queueRecoverCurrentTerminalDelayed(0L);
+						queueRecoverCurrentTerminalDelayed(500L);
+						queueRecoverCurrentTerminalDelayed(1500L);
+						queueRecoverCurrentTerminalDelayed(3000L);
+						queueRecoverCurrentTerminalDelayed(6000L);
+						if (hasRecentDisplayResize()) {
+							startTerminalRecoveryMonitor(DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS);
 						}
 					}
-				});
+				}
+			});
 		}
 
 	private void addKeyRepeater(View view) {
@@ -1208,6 +1265,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		}
 
 		configureOrientation();
+		applyFullscreenFlagFromPreferences();
 
 		// Restore prompt listeners when activity becomes visible
 		if (bound != null) {
@@ -1218,6 +1276,22 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 		if (forcedOrientation && bound != null) {
 			bound.setResizeAllowed(true);
+		}
+	}
+
+	@Override
+	public void onWindowFocusChanged(boolean hasFocus) {
+		super.onWindowFocusChanged(hasFocus);
+		if (!hasFocus) {
+			return;
+		}
+
+		applyFullscreenFlagFromPreferences();
+		queueEnsurePagerPopulated();
+		queueRecoverCurrentTerminalDelayed(0L);
+		queueRecoverCurrentTerminalDelayed(250L);
+		if (hasRecentDisplayResize()) {
+			startTerminalRecoveryMonitor(DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS);
 		}
 	}
 
@@ -1407,8 +1481,10 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	}
 
 	@Override
-		public void onConfigurationChanged(Configuration newConfig) {
-			super.onConfigurationChanged(newConfig);
+	public void onConfigurationChanged(Configuration newConfig) {
+		super.onConfigurationChanged(newConfig);
+
+		applyFullscreenFlagFromPreferences();
 
 		boolean displaySizeChanged = false;
 		if (lastScreenWidthDp != -1) {
@@ -1423,6 +1499,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		lastScreenLayout = newConfig.screenLayout;
 		if (displaySizeChanged) {
 			lastDisplayResizeUptimeMillis = SystemClock.uptimeMillis();
+			startTerminalRecoveryMonitor(DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS);
 		}
 
 		Log.d(TAG, String.format("onConfigurationChanged; requestedOrientation=%d, newConfig.orientation=%d", getRequestedOrientation(), newConfig.orientation));
@@ -1438,10 +1515,15 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			mKeyboardButton.setVisibility(bound.hardKeyboardHidden ? View.VISIBLE : View.GONE);
 		}
 
-			queueEnsurePagerPopulated();
-			queueRecoverCurrentTerminalDelayed(250L);
-			queueRecoverCurrentTerminalDelayed(1000L);
+		queueEnsurePagerPopulated();
+		queueRecoverCurrentTerminalDelayed(250L);
+		queueRecoverCurrentTerminalDelayed(1000L);
+		if (hasRecentDisplayResize()) {
+			queueRecoverCurrentTerminalDelayed(2000L);
+			queueRecoverCurrentTerminalDelayed(4000L);
+			startTerminalRecoveryMonitor(DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS);
 		}
+	}
 
 	/**
 	 * Called whenever the displayed terminal is changed.
