@@ -121,4 +121,30 @@
 		<item>backspace</item>
 	</string-array>
 
+	<string-array name="list_app_theme_colors" translatable="false">
+		<item>Default</item>
+		<item>ConnectBot blue</item>
+		<item>Deep blue</item>
+		<item>Teal</item>
+		<item>Green</item>
+		<item>Purple</item>
+		<item>Orange</item>
+		<item>Red</item>
+		<item>Gray</item>
+		<item>Black</item>
+	</string-array>
+
+	<string-array name="list_app_theme_color_values" translatable="false">
+		<item>default</item>
+		<item>03A9F4</item>
+		<item>1E88E5</item>
+		<item>009688</item>
+		<item>4CAF50</item>
+		<item>9C27B0</item>
+		<item>FF9800</item>
+		<item>F44336</item>
+		<item>607D8B</item>
+		<item>000000</item>
+	</string-array>
+
 </resources>

@@ -40,6 +40,7 @@ import android.view.MenuItem;
 import org.connectbot.bean.HostBean;
 import org.connectbot.service.TerminalBridge;
 import org.connectbot.service.TerminalManager;
+import org.connectbot.util.AppThemeUtils;
 import org.connectbot.util.HostDatabase;
 import org.connectbot.util.PubkeyDatabase;
 
@@ -255,6 +256,12 @@ public class EditHostActivity extends AppCompatActivity implements HostEditorFra
 	private void setAddSaveButtonEnabled(boolean enabled) {
 		mSaveHostButton.setEnabled(enabled);
 		mSaveHostButton.getIcon().setAlpha(enabled ? ENABLED_ALPHA : DISABLED_ALPHA);
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		AppThemeUtils.apply(this);
 	}
 
 	// Private static class used to generate a list of available Charsets. Note that this class

@@ -17,18 +17,27 @@
 
 package org.connectbot;
 
+import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.text.NumberFormat;
 
 import org.connectbot.data.ColorStorage;
 import org.connectbot.util.Colors;
+import org.connectbot.util.GnomeTerminalColorSchemeParser;
 import org.connectbot.util.HostDatabase;
+import org.connectbot.util.Iterm2ColorSchemeParser;
+import org.connectbot.util.AppThemeUtils;
 import org.connectbot.util.UberColorPickerDialog;
 import org.connectbot.util.UberColorPickerDialog.OnColorChangedListener;
 
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Paint;
+import android.net.Uri;
 import android.os.Bundle;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import android.util.DisplayMetrics;
 import android.view.Menu;
@@ -42,6 +51,7 @@ import android.widget.GridView;
 import android.widget.Spinner;
 import android.widget.AdapterView.OnItemClickListener;
 import android.widget.AdapterView.OnItemSelectedListener;
+import android.widget.Toast;
 
 /**
  * @author Kenny Root
@@ -60,6 +70,9 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 	private int mCurrentColor = 0;
 
 	private int[] mDefaultColors;
+
+	private final ActivityResultLauncher<String[]> mImportThemeLauncher =
+			registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::importThemeFromUri);
 
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
@@ -102,10 +115,115 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 	@Override
 	protected void onResume() {
 		super.onResume();
+		AppThemeUtils.apply(this);
 
 		if (mHostDb == null) {
 			mHostDb = HostDatabase.get(this);
 		}
+	}
+
+	private void importThemeFromUri(Uri uri) {
+		if (uri == null) return;
+
+		String text;
+		try {
+			text = readTextFromUri(uri);
+		} catch (Exception e) {
+			Toast.makeText(this, getString(R.string.toast_colors_import_error, e.getMessage()), Toast.LENGTH_LONG).show();
+			return;
+		}
+
+		try {
+			int[] palette;
+			Integer fg = null;
+			Integer bg = null;
+			if (Iterm2ColorSchemeParser.looksLikeIterm2Scheme(text)) {
+				Iterm2ColorSchemeParser.ParsedScheme parsed = Iterm2ColorSchemeParser.parse(text);
+				palette = parsed.ansiColors;
+				fg = parsed.foregroundColor;
+				bg = parsed.backgroundColor;
+			} else if (GnomeTerminalColorSchemeParser.looksLikeGnomeTerminalScheme(text)) {
+				GnomeTerminalColorSchemeParser.ParsedScheme parsed = GnomeTerminalColorSchemeParser.parse(text);
+				palette = parsed.ansiColors;
+				fg = parsed.foregroundColor;
+				bg = parsed.backgroundColor;
+			} else {
+				throw new IllegalArgumentException("Unrecognized theme format");
+			}
+
+			applyImportedPalette(palette, fg, bg);
+			Toast.makeText(this, R.string.toast_colors_import_success, Toast.LENGTH_LONG).show();
+		} catch (Exception e) {
+			Toast.makeText(this, getString(R.string.toast_colors_import_error, e.getMessage()), Toast.LENGTH_LONG).show();
+		}
+	}
+
+	private String readTextFromUri(Uri uri) throws Exception {
+		final int maxBytes = 1024 * 1024; // 1 MiB
+
+		try (InputStream is = getContentResolver().openInputStream(uri)) {
+			if (is == null) throw new IllegalArgumentException("Failed to open file");
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			byte[] buffer = new byte[8192];
+			int total = 0;
+			int read;
+			while ((read = is.read(buffer)) != -1) {
+				total += read;
+				if (total > maxBytes) throw new IllegalArgumentException("Theme file is too large");
+				out.write(buffer, 0, read);
+			}
+			return new String(out.toByteArray(), StandardCharsets.UTF_8);
+		}
+	}
+
+	private void applyImportedPalette(int[] palette, Integer foregroundColor, Integer backgroundColor) {
+		if (palette == null || palette.length != 16) {
+			throw new IllegalArgumentException("Expected a 16-color ANSI palette");
+		}
+
+		for (int i = 0; i < 16; i++) {
+			mHostDb.setGlobalColor(i, palette[i]);
+			mColorList[i] = palette[i];
+		}
+		mColorGrid.invalidateViews();
+
+		int newFg = mDefaultColors[0];
+		int newBg = mDefaultColors[1];
+		if (foregroundColor != null) newFg = closestAnsiIndex(foregroundColor, palette);
+		if (backgroundColor != null) newBg = closestAnsiIndex(backgroundColor, palette);
+
+		mDefaultColors[0] = newFg;
+		mDefaultColors[1] = newBg;
+		mHostDb.setDefaultColorsForScheme(mColorScheme, newFg, newBg);
+
+		mFgSpinner.setSelection(newFg);
+		mBgSpinner.setSelection(newBg);
+	}
+
+	private int closestAnsiIndex(int targetColor, int[] palette) {
+		int bestIndex = 0;
+		int bestDistance = Integer.MAX_VALUE;
+
+		int targetR = (targetColor >> 16) & 0xFF;
+		int targetG = (targetColor >> 8) & 0xFF;
+		int targetB = targetColor & 0xFF;
+
+		for (int i = 0; i < palette.length; i++) {
+			int color = palette[i];
+			int r = (color >> 16) & 0xFF;
+			int g = (color >> 8) & 0xFF;
+			int b = color & 0xFF;
+			int dr = targetR - r;
+			int dg = targetG - g;
+			int db = targetB - b;
+			int distance = dr * dr + dg * dg + db * db;
+			if (distance < bestDistance) {
+				bestDistance = distance;
+				bestIndex = i;
+			}
+		}
+
+		return bestIndex;
 	}
 
 	private class ColorsAdapter extends BaseAdapter {
@@ -335,6 +453,15 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 	@Override
 	public boolean onCreateOptionsMenu(Menu menu) {
 		super.onCreateOptionsMenu(menu);
+
+		MenuItem importTheme = menu.add(R.string.menu_colors_import);
+		importTheme.setAlphabeticShortcut('i');
+		importTheme.setNumericShortcut('0');
+		importTheme.setIcon(android.R.drawable.ic_menu_upload);
+		importTheme.setOnMenuItemClickListener(item -> {
+			mImportThemeLauncher.launch(new String[] {"*/*"});
+			return true;
+		});
 
 		MenuItem reset = menu.add(R.string.menu_colors_reset);
 		reset.setAlphabeticShortcut('r');

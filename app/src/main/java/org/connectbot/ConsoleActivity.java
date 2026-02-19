@@ -27,6 +27,7 @@ import org.connectbot.service.PromptHelper;
 import org.connectbot.service.TerminalBridge;
 import org.connectbot.service.TerminalKeyListener;
 import org.connectbot.service.TerminalManager;
+import org.connectbot.util.AppThemeUtils;
 import org.connectbot.util.PreferenceConstants;
 import org.connectbot.util.TerminalViewPager;
 
@@ -1254,6 +1255,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	@Override
 	public void onResume() {
 		super.onResume();
+		AppThemeUtils.apply(this);
 		Log.d(TAG, "onResume called");
 
 		// Make sure we don't let the screen fall asleep.

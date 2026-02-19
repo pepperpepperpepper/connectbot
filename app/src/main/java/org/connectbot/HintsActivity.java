@@ -19,6 +19,7 @@ package org.connectbot;
 
 import android.os.Bundle;
 import androidx.appcompat.app.AppCompatActivity;
+import org.connectbot.util.AppThemeUtils;
 
 public class HintsActivity extends AppCompatActivity {
 
@@ -26,5 +27,11 @@ public class HintsActivity extends AppCompatActivity {
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
 		setContentView(R.layout.act_hints);
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		AppThemeUtils.apply(this);
 	}
 }

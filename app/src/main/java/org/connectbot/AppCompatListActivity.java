@@ -17,6 +17,8 @@
 
 package org.connectbot;
 
+import org.connectbot.util.AppThemeUtils;
+
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.Canvas;
@@ -32,6 +34,12 @@ public abstract class AppCompatListActivity extends AppCompatActivity {
 
 	protected View mEmptyView;
 	protected RecyclerView mListView;
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		AppThemeUtils.apply(this);
+	}
 
 	/**
 	 * If the list is empty, hides the list and shows the empty message; otherwise, shows

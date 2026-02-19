@@ -30,6 +30,7 @@ import org.connectbot.util.EntropyDialog;
 import org.connectbot.util.EntropyView;
 import org.connectbot.util.OnEntropyGatheredListener;
 import org.connectbot.util.OnKeyGeneratedListener;
+import org.connectbot.util.AppThemeUtils;
 import org.connectbot.util.PubkeyDatabase;
 import org.connectbot.util.PubkeyUtils;
 
@@ -427,6 +428,12 @@ public class GeneratePubkeyActivity extends AppCompatActivity implements OnEntro
 			checkEntries();
 		}
 	};
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		AppThemeUtils.apply(this);
+	}
 
 	private int measureNumberOfSetBits(byte b) {
 		int numSetBits = 0;

@@ -219,6 +219,11 @@
 	<!-- Summary for the rotation mode preference -->
 	<string name="pref_rotation_summary">"How to change rotation when keyboard popped in/out"</string>
 
+	<!-- Name for the app theme color preference -->
+	<string name="pref_app_theme_color_title">"App header color"</string>
+	<!-- Summary for the app theme color preference -->
+	<string name="pref_app_theme_color_summary">"Current: %1$s"</string>
+
 	<!-- Name for the titlebar hide preference -->
 	<string name="pref_titlebarhide_title">"Autohide title bar"</string>
 	<!-- Summary for the titlebar hide preference -->
@@ -528,6 +533,12 @@
 
 	<!-- Menu selection to reset colors to their defaults. -->
 	<string name="menu_colors_reset">"Reset"</string>
+
+	<!-- Menu selection to import a terminal color theme (iTerm2 / GNOME Terminal). -->
+	<string name="menu_colors_import">"Import theme"</string>
+
+	<string name="toast_colors_import_success">"Theme imported."</string>
+	<string name="toast_colors_import_error">"Import failed: %1$s"</string>
 
 	<!-- Displayed in the notification bar that connections are active -->
 	<string name="app_is_running">"ConnectBot is running"</string>

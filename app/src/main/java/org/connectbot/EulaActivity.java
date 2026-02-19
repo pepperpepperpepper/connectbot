@@ -17,6 +17,7 @@
 
 package org.connectbot;
 
+import org.connectbot.util.AppThemeUtils;
 import org.connectbot.util.Version;
 
 import android.os.Bundle;
@@ -30,5 +31,11 @@ public class EulaActivity extends AppCompatActivity {
 		setContentView(R.layout.act_eula);
 
 		Version.setVersionText(getApplicationContext(), findViewById(R.id.version));
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		AppThemeUtils.apply(this);
 	}
 }

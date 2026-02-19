@@ -17,6 +17,7 @@
 
 package org.connectbot;
 
+import org.connectbot.util.AppThemeUtils;
 import org.connectbot.util.Version;
 
 import android.annotation.SuppressLint;
@@ -77,5 +78,11 @@ public class HelpActivity extends AppCompatActivity {
 				HelpActivity.this.startActivity(intent);
 			}
 		});
+	}
+
+	@Override
+	protected void onResume() {
+		super.onResume();
+		AppThemeUtils.apply(this);
 	}
 }
