@@ -19,6 +19,7 @@ package org.connectbot.util;
 
 import org.connectbot.R;
 
+import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
@@ -36,22 +37,25 @@ public final class AppThemeUtils {
 	}
 
 	public static void apply(AppCompatActivity activity) {
+		apply(activity, null);
+	}
+
+	/**
+	 * Apply the given raw preference value immediately (useful for live preview in Settings).
+	 * If {@code rawOverride} is {@code null}, uses the stored preference value.
+	 */
+	public static void apply(AppCompatActivity activity, String rawOverride) {
 		if (activity == null) return;
 
-		SharedPreferences prefs =
-				PreferenceManager.getDefaultSharedPreferences(activity.getApplicationContext());
-		String raw = prefs.getString(PreferenceConstants.APP_THEME_COLOR, "default");
-		boolean isDefault = raw == null || raw.trim().isEmpty() || "default".equals(raw.trim());
-
-		int primary;
-		int darkPrimary;
-		if (isDefault) {
-			primary = ContextCompat.getColor(activity, R.color.primary);
-			darkPrimary = ContextCompat.getColor(activity, R.color.dark_primary);
-		} else {
-			primary = parseColorValue(raw, ContextCompat.getColor(activity, R.color.primary));
-			darkPrimary = darken(primary, 0.85f);
+		String raw = rawOverride;
+		if (raw == null) {
+			SharedPreferences prefs =
+					PreferenceManager.getDefaultSharedPreferences(activity.getApplicationContext());
+			raw = prefs.getString(PreferenceConstants.APP_THEME_COLOR, "default");
 		}
+
+		int primary = resolvePrimaryColor(activity, raw);
+		int darkPrimary = resolveDarkPrimaryColor(activity, raw, primary);
 
 		ActionBar actionBar = activity.getSupportActionBar();
 		if (actionBar != null) {
@@ -61,6 +65,29 @@ public final class AppThemeUtils {
 		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
 			activity.getWindow().setStatusBarColor(darkPrimary);
 		}
+	}
+
+	public static int resolvePrimaryColor(Context context, String raw) {
+		int defaultPrimary = ContextCompat.getColor(context, R.color.primary);
+		return resolvePrimaryColor(context, raw, defaultPrimary);
+	}
+
+	private static int resolvePrimaryColor(Context context, String raw, int fallback) {
+		if (context == null) return fallback;
+		if (raw == null) return fallback;
+		String trimmed = raw.trim();
+		if (trimmed.isEmpty() || "default".equals(trimmed)) return fallback;
+		return parseColorValue(trimmed, fallback);
+	}
+
+	private static int resolveDarkPrimaryColor(Context context, String raw, int primaryColor) {
+		if (context == null) return darken(primaryColor, 0.85f);
+		if (raw == null) return darken(primaryColor, 0.85f);
+		String trimmed = raw.trim();
+		if (trimmed.isEmpty() || "default".equals(trimmed)) {
+			return ContextCompat.getColor(context, R.color.dark_primary);
+		}
+		return darken(primaryColor, 0.85f);
 	}
 
 	private static int parseColorValue(String raw, int fallback) {
@@ -96,4 +123,3 @@ public final class AppThemeUtils {
 		return v;
 	}
 }
-
