@@ -20,6 +20,7 @@ package org.connectbot;
 import org.connectbot.util.VolumePreference;
 import org.connectbot.util.VolumePreferenceFragment;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.text.SpannableString;
 import android.text.Spanned;
@@ -65,6 +66,7 @@ public class SettingsFragment extends PreferenceFragmentCompat {
 	public void onCreatePreferences(Bundle bundle, String rootKey) {
 		setPreferencesFromResource(R.xml.preferences, rootKey);
 		setupAppThemeColorPreference();
+		setupTerminalColorsPreference();
 	}
 
 	private void setupAppThemeColorPreference() {
@@ -109,5 +111,14 @@ public class SettingsFragment extends PreferenceFragmentCompat {
 		s.setSpan(new ForegroundColorSpan(color), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 		s.setSpan(new RelativeSizeSpan(1.2f), 0, 1, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE);
 		return s;
+	}
+
+	private void setupTerminalColorsPreference() {
+		Preference pref = findPreference("terminalColors");
+		if (pref == null) return;
+		pref.setOnPreferenceClickListener(preference -> {
+			startActivity(new Intent(requireContext(), ColorsActivity.class));
+			return true;
+		});
 	}
 }

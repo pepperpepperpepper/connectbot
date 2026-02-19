@@ -82,6 +82,12 @@
 			android:defaultValue="default"
 			/>
 
+		<Preference
+			android:key="terminalColors"
+			android:title="@string/pref_terminal_colors_title"
+			android:summary="@string/pref_terminal_colors_summary"
+			/>
+
 		<ListPreference
 			android:key="rotation"
 			android:title="@string/pref_rotation_title"

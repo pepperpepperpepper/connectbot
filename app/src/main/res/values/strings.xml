@@ -224,6 +224,11 @@
 	<!-- Summary for the app theme color preference -->
 	<string name="pref_app_theme_color_summary">"Current: %1$s"</string>
 
+	<!-- Name for the preference used to edit/import terminal color themes. -->
+	<string name="pref_terminal_colors_title">"Terminal colors"</string>
+	<!-- Summary for the preference used to edit/import terminal color themes. -->
+	<string name="pref_terminal_colors_summary">"Edit or import a theme file (iTerm2 / GNOME Terminal)"</string>
+
 	<!-- Name for the titlebar hide preference -->
 	<string name="pref_titlebarhide_title">"Autohide title bar"</string>
 	<!-- Summary for the titlebar hide preference -->

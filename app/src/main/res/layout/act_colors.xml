@@ -48,11 +48,35 @@
 			/>
 	</LinearLayout>
 
+	<LinearLayout
+		android:id="@+id/actions"
+		android:layout_width="fill_parent"
+		android:layout_height="wrap_content"
+		android:layout_below="@+id/spinners"
+		android:orientation="horizontal"
+		android:paddingLeft="10dp"
+		android:paddingRight="10dp">
+
+		<Button
+			android:id="@+id/button_import_theme"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="@string/menu_colors_import" />
+
+		<Button
+			android:id="@+id/button_reset_colors"
+			android:layout_width="0dp"
+			android:layout_height="wrap_content"
+			android:layout_weight="1"
+			android:text="@string/menu_colors_reset" />
+	</LinearLayout>
+
 	<GridView
 		android:id="@+id/color_grid"
 		android:layout_width="fill_parent"
 		android:layout_height="fill_parent"
-		android:layout_below="@+id/spinners"
+		android:layout_below="@+id/actions"
 		android:columnWidth="60dp"
 		android:gravity="center"
 		android:horizontalSpacing="10dp"

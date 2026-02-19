@@ -1092,6 +1092,24 @@ public class TerminalBridge implements VDUDisplay {
 		color = manager.colordb.getColorsForScheme(HostDatabase.DEFAULT_COLOR_SCHEME);
 	}
 
+	/**
+	 * Reloads the global terminal palette and requests a redraw.
+	 *
+	 * <p>Used when the user imports/resets terminal colors while sessions are active.</p>
+	 */
+	public void onColorsChanged() {
+		resetColors();
+
+		final TerminalView p;
+		synchronized (this) {
+			p = parent;
+		}
+		if (p != null) {
+			p.onColorsChanged();
+		}
+		requestFullRedraw();
+	}
+
 	private static class PatternHolder {
 		static {
 			// based on http://www.ietf.org/rfc/rfc2396.txt

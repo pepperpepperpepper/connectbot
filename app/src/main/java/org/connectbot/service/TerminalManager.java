@@ -43,8 +43,10 @@ import org.connectbot.util.PubkeyDatabase;
 import org.connectbot.util.PubkeyUtils;
 
 import android.app.Service;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.content.res.AssetFileDescriptor;
@@ -68,6 +70,8 @@ import android.util.Log;
  */
 public class TerminalManager extends Service implements BridgeDisconnectedListener, OnSharedPreferenceChangeListener, ProviderLoaderListener {
 	public final static String TAG = "CB.TerminalManager";
+
+	public static final String ACTION_COLORS_CHANGED = "org.connectbot.action.COLORS_CHANGED";
 
 	private final ArrayList<TerminalBridge> bridges = new ArrayList<>();
 	public Map<HostBean, WeakReference<TerminalBridge>> mHostBridgeMap = new HashMap<>();
@@ -116,6 +120,13 @@ public class TerminalManager extends Service implements BridgeDisconnectedListen
 
 	public boolean hardKeyboardHidden;
 
+	private final BroadcastReceiver colorsChangedReceiver = new BroadcastReceiver() {
+		@Override
+		public void onReceive(Context context, Intent intent) {
+			notifyAllBridgesColorsChanged();
+		}
+	};
+
 	@Override
 	public void onCreate() {
 		Log.i(TAG, "Starting service");
@@ -157,6 +168,8 @@ public class TerminalManager extends Service implements BridgeDisconnectedListen
 
 		connectivityManager = new ConnectivityReceiver(this, lockingWifi);
 
+		registerReceiver(colorsChangedReceiver, new IntentFilter(ACTION_COLORS_CHANGED));
+
 		ProviderLoader.load(this, this);
 	}
 
@@ -167,6 +180,12 @@ public class TerminalManager extends Service implements BridgeDisconnectedListen
 	@Override
 	public void onDestroy() {
 		Log.i(TAG, "Destroying service");
+
+		try {
+			unregisterReceiver(colorsChangedReceiver);
+		} catch (Exception ignored) {
+			// Best-effort: ignore if already unregistered.
+		}
 
 		disconnectAll(true, false);
 
@@ -185,6 +204,19 @@ public class TerminalManager extends Service implements BridgeDisconnectedListen
 		ConnectionNotifier.getInstance().hideRunningNotification(this);
 
 		disableMediaPlayer();
+	}
+
+	private void notifyAllBridgesColorsChanged() {
+		final ArrayList<TerminalBridge> bridgesSnapshot;
+		synchronized (bridges) {
+			bridgesSnapshot = new ArrayList<>(bridges);
+		}
+
+		for (TerminalBridge bridge : bridgesSnapshot) {
+			if (bridge != null) {
+				bridge.onColorsChanged();
+			}
+		}
 	}
 
 	/**

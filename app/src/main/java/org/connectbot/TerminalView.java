@@ -604,6 +604,14 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 	}
 
 	/**
+	 * Called when the global ANSI palette changes (e.g., theme import/reset).
+	 */
+	public void onColorsChanged() {
+		cursorPaint.setColor(bridge.color[bridge.defaultFg]);
+		postInvalidate();
+	}
+
+	/**
 	 * Ask the {@link TerminalBridge} we're connected to to resize to a specific size.
 	 * @param width width in characters
 	 * @param height heigh in characters

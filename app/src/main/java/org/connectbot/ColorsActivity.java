@@ -30,8 +30,10 @@ import org.connectbot.util.Iterm2ColorSchemeParser;
 import org.connectbot.util.AppThemeUtils;
 import org.connectbot.util.UberColorPickerDialog;
 import org.connectbot.util.UberColorPickerDialog.OnColorChangedListener;
+import org.connectbot.service.TerminalManager;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Canvas;
 import android.graphics.Paint;
 import android.net.Uri;
@@ -74,6 +76,8 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 	private final ActivityResultLauncher<String[]> mImportThemeLauncher =
 			registerForActivityResult(new ActivityResultContracts.OpenDocument(), this::importThemeFromUri);
 
+	private boolean mColorsChanged = false;
+
 	@Override
 	protected void onCreate(Bundle savedInstanceState) {
 		super.onCreate(savedInstanceState);
@@ -101,6 +105,16 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 		mBgSpinner.setAdapter(new ColorsAdapter(false, R.string.color_bg_label));
 		mBgSpinner.setSelection(mDefaultColors[1]);
 		mBgSpinner.setOnItemSelectedListener(this);
+
+		View importButton = findViewById(R.id.button_import_theme);
+		if (importButton != null) {
+			importButton.setOnClickListener(v -> launchImportThemePicker());
+		}
+
+		View resetButton = findViewById(R.id.button_reset_colors);
+		if (resetButton != null) {
+			resetButton.setOnClickListener(v -> resetColorsToDefaults());
+		}
 	}
 
 	@Override
@@ -120,6 +134,25 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 		if (mHostDb == null) {
 			mHostDb = HostDatabase.get(this);
 		}
+	}
+
+	@Override
+	protected void onPause() {
+		super.onPause();
+		if (mColorsChanged) {
+			notifyTerminalColorsChanged();
+			mColorsChanged = false;
+		}
+	}
+
+	private void notifyTerminalColorsChanged() {
+		Intent intent = new Intent(TerminalManager.ACTION_COLORS_CHANGED);
+		intent.setPackage(getPackageName());
+		sendBroadcast(intent);
+	}
+
+	private void launchImportThemePicker() {
+		mImportThemeLauncher.launch(new String[] {"*/*"});
 	}
 
 	private void importThemeFromUri(Uri uri) {
@@ -152,6 +185,7 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 			}
 
 			applyImportedPalette(palette, fg, bg);
+			mColorsChanged = true;
 			Toast.makeText(this, R.string.toast_colors_import_success, Toast.LENGTH_LONG).show();
 		} catch (Exception e) {
 			Toast.makeText(this, getString(R.string.toast_colors_import_error, e.getMessage()), Toast.LENGTH_LONG).show();
@@ -198,6 +232,27 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 
 		mFgSpinner.setSelection(newFg);
 		mBgSpinner.setSelection(newBg);
+	}
+
+	private void resetColorsToDefaults() {
+		// Reset each individual color to defaults.
+		for (int i = 0; i < Colors.defaults.length; i++) {
+			if (mColorList[i] != Colors.defaults[i]) {
+				mHostDb.setGlobalColor(i, Colors.defaults[i]);
+				mColorList[i] = Colors.defaults[i];
+			}
+		}
+		mColorGrid.invalidateViews();
+
+		// Reset the default FG/BG colors as well.
+		mFgSpinner.setSelection(HostDatabase.DEFAULT_FG_COLOR);
+		mBgSpinner.setSelection(HostDatabase.DEFAULT_BG_COLOR);
+		mHostDb.setDefaultColorsForScheme(
+				HostDatabase.DEFAULT_COLOR_SCHEME,
+				HostDatabase.DEFAULT_FG_COLOR,
+				HostDatabase.DEFAULT_BG_COLOR);
+
+		mColorsChanged = true;
 	}
 
 	private int closestAnsiIndex(int targetColor, int[] palette) {
@@ -427,6 +482,7 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 		mHostDb.setGlobalColor(mCurrentColor, value);
 		mColorList[mCurrentColor] = value;
 		mColorGrid.invalidateViews();
+		mColorsChanged = true;
 	}
 
 	@Override
@@ -447,6 +503,7 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 
 		if (needUpdate) {
 			mHostDb.setDefaultColorsForScheme(mColorScheme, mDefaultColors[0], mDefaultColors[1]);
+			mColorsChanged = true;
 		}
 	}
 
@@ -459,7 +516,7 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 		importTheme.setNumericShortcut('0');
 		importTheme.setIcon(android.R.drawable.ic_menu_upload);
 		importTheme.setOnMenuItemClickListener(item -> {
-			mImportThemeLauncher.launch(new String[] {"*/*"});
+			launchImportThemePicker();
 			return true;
 		});
 
@@ -470,21 +527,7 @@ public class ColorsActivity extends AppCompatActivity implements OnItemClickList
 		reset.setOnMenuItemClickListener(new OnMenuItemClickListener() {
 			@Override
 			public boolean onMenuItemClick(MenuItem arg0) {
-				// Reset each individual color to defaults.
-				for (int i = 0; i < Colors.defaults.length; i++) {
-					if (mColorList[i] != Colors.defaults[i]) {
-						mHostDb.setGlobalColor(i, Colors.defaults[i]);
-						mColorList[i] = Colors.defaults[i];
-					}
-				}
-				mColorGrid.invalidateViews();
-
-				// Reset the default FG/BG colors as well.
-				mFgSpinner.setSelection(HostDatabase.DEFAULT_FG_COLOR);
-				mBgSpinner.setSelection(HostDatabase.DEFAULT_BG_COLOR);
-				mHostDb.setDefaultColorsForScheme(HostDatabase.DEFAULT_COLOR_SCHEME,
-						HostDatabase.DEFAULT_FG_COLOR, HostDatabase.DEFAULT_BG_COLOR);
-
+				resetColorsToDefaults();
 				return true;
 			}
 		});
