@@ -376,6 +376,68 @@ class ColorSchemeRepository @Inject constructor(
         }
 
     /**
+     * Import an iTerm2 `.itermcolors` scheme (XML plist).
+     *
+     * iTerm2 schemes typically include 16 ANSI colors and may include separate foreground/background
+     * colors. Our schemes store defaults as *indices* into the 16-color palette, so we choose the
+     * closest ANSI index for the provided FG/BG colors (when present).
+     *
+     * @param xmlPlist The plist XML string
+     * @param nameHint A filename or user-visible name to use as the imported scheme name
+     * @param allowOverwrite If false and name exists, will auto-rename
+     * @return The ID of the imported scheme
+     */
+    suspend fun importIterm2Scheme(
+        xmlPlist: String,
+        nameHint: String,
+        allowOverwrite: Boolean = false
+    ): Long = withContext(dispatchers.io) {
+        val parsed = Iterm2ColorSchemeParser.parse(xmlPlist)
+        val palette = parsed.ansiColors
+
+        var finalName = normalizeImportedSchemeName(nameHint).ifBlank { "Imported iTerm2" }
+        if (schemeNameExists(finalName)) {
+            if (!allowOverwrite) {
+                var counter = 1
+                while (schemeNameExists("$finalName ($counter)")) {
+                    counter++
+                }
+                finalName = "$finalName ($counter)"
+            }
+        }
+
+        val newSchemeId = createCustomScheme(
+            name = finalName,
+            description = "Imported from iTerm2",
+            basedOnSchemeId = -1
+        )
+
+        // Override the palette with imported ANSI colors.
+        palette.forEachIndexed { index, color ->
+            val colorEntry = ColorPalette(
+                schemeId = newSchemeId,
+                colorIndex = index,
+                color = color
+            )
+            colorSchemeDao.insertOrUpdateColor(colorEntry)
+        }
+
+        // If the scheme includes explicit FG/BG colors, pick the closest ANSI indices.
+        val scheme = colorSchemeDao.getById(newSchemeId)
+        if (scheme != null) {
+            val fgIndex =
+                parsed.foregroundColor?.let { closestAnsiIndex(it, palette) } ?: scheme.foreground
+            val bgIndex =
+                parsed.backgroundColor?.let { closestAnsiIndex(it, palette) } ?: scheme.background
+            if (fgIndex != scheme.foreground || bgIndex != scheme.background) {
+                colorSchemeDao.update(scheme.copy(foreground = fgIndex, background = bgIndex))
+            }
+        }
+
+        newSchemeId
+    }
+
+    /**
      * Blocking wrapper for getSchemeColors - for use from non-coroutine code.
      * Returns the color palette for a scheme as an IntArray.
      */
@@ -389,5 +451,43 @@ class ColorSchemeRepository @Inject constructor(
     fun getDefaultColorsForSchemeBlocking(schemeId: Long): IntArray {
         val (fg, bg) = runBlocking { getSchemeDefaults(schemeId) }
         return intArrayOf(fg, bg)
+    }
+
+    private fun normalizeImportedSchemeName(nameHint: String): String {
+        val trimmed = nameHint.trim()
+        if (trimmed.isBlank()) return ""
+
+        val lower = trimmed.lowercase()
+        return when {
+            lower.endsWith(".itermcolors") -> trimmed.dropLast(".itermcolors".length)
+            lower.endsWith(".xml") -> trimmed.dropLast(".xml".length)
+            lower.endsWith(".json") -> trimmed.dropLast(".json".length)
+            else -> trimmed
+        }.trim()
+    }
+
+    private fun closestAnsiIndex(targetColor: Int, palette: IntArray): Int {
+        var bestIndex = 0
+        var bestDistance = Int.MAX_VALUE
+
+        val targetR = (targetColor shr 16) and 0xFF
+        val targetG = (targetColor shr 8) and 0xFF
+        val targetB = targetColor and 0xFF
+
+        palette.forEachIndexed { index, color ->
+            val r = (color shr 16) and 0xFF
+            val g = (color shr 8) and 0xFF
+            val b = color and 0xFF
+            val dr = targetR - r
+            val dg = targetG - g
+            val db = targetB - b
+            val distance = dr * dr + dg * dg + db * db
+            if (distance < bestDistance) {
+                bestDistance = distance
+                bestIndex = index
+            }
+        }
+
+        return bestIndex
     }
 }

@@ -324,6 +324,12 @@ Capture:
   - Verified on Genymotion SaaS: `CONNECTBOT_ANDROID_TEST_CLASS=org.connectbot.terminal.TerminalLinkTapTest CONNECTBOT_TERMLIB_VERSION=0.0.18-SNAPSHOT scripts/run_gmsaas_android_test.sh` ✅
   - Extended coverage to include OSC8 hyperlinks (enabled + disabled) and verified locally on Genymotion: `./gradlew :app:connectedGoogleDebugAndroidTest -PconnectbotTermlibVersion=0.0.18-SNAPSHOT -Pandroid.testInstrumentationRunnerArguments.class=org.connectbot.terminal.TerminalLinkTapTest` ✅
 
+## Color themes (iTerm2)
+
+- Added import of iTerm2 `.itermcolors` (plist XML) in the Color Scheme Manager:
+  - Imports `Ansi 0 Color` … `Ansi 15 Color`.
+  - If present, `Foreground Color` / `Background Color` are mapped to the closest ANSI indices for scheme defaults.
+
 ## Shell navigation (higher priority)
 
 - **Requirement:** the *remote shell* must respond correctly to standard **readline emacs-mode** and **vi-mode** keybindings using a real keyboard (hardware keyboard or an IME that sends key events).

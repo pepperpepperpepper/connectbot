@@ -290,4 +290,56 @@ class ColorSchemeRepositoryTest {
         assertEquals("FG should be reset to default", HostConstants.DEFAULT_FG_COLOR, fgAfter)
         assertEquals("BG should be reset to default", HostConstants.DEFAULT_BG_COLOR, bgAfter)
     }
+
+    @Test
+    fun importIterm2Scheme_Valid_PersistsPaletteAndDefaults() = runBlocking {
+        val xml = itermcolorsXml()
+
+        val schemeId = repository.importIterm2Scheme(xml, nameHint = "My Theme.itermcolors", allowOverwrite = false)
+        assertTrue("Imported scheme ID should be positive", schemeId > 0)
+
+        val schemes = repository.getAllSchemes()
+        val scheme = schemes.find { it.id == schemeId }
+        assertNotNull("Imported scheme should exist", scheme)
+        assertEquals("My Theme", scheme?.name)
+
+        // Palette should match the imported ANSI colors.
+        val palette = repository.getSchemeColors(schemeId)
+        assertEquals("Should have 16 colors", 16, palette.size)
+        assertEquals(0xFF000000.toInt(), palette[0])
+        assertEquals(0xFFFF0000.toInt(), palette[1])
+
+        // Foreground/background defaults in the fixture match ANSI 1 and ANSI 0.
+        val defaults = repository.getSchemeDefaults(schemeId)
+        assertEquals(1, defaults.first)
+        assertEquals(0, defaults.second)
+    }
+
+    private fun itermcolorsXml(): String =
+        """
+        <?xml version="1.0" encoding="UTF-8"?>
+        <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+        <plist version="1.0">
+          <dict>
+            <key>Ansi 0 Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 1 Color</key><dict><key>Red Component</key><integer>255</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 2 Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>255</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 3 Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>255</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 4 Color</key><dict><key>Red Component</key><integer>255</integer><key>Green Component</key><integer>255</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 5 Color</key><dict><key>Red Component</key><integer>255</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>255</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 6 Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>255</integer><key>Blue Component</key><integer>255</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 7 Color</key><dict><key>Red Component</key><integer>255</integer><key>Green Component</key><integer>255</integer><key>Blue Component</key><integer>255</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 8 Color</key><dict><key>Red Component</key><integer>128</integer><key>Green Component</key><integer>128</integer><key>Blue Component</key><integer>128</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 9 Color</key><dict><key>Red Component</key><integer>128</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 10 Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>128</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 11 Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>128</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 12 Color</key><dict><key>Red Component</key><integer>128</integer><key>Green Component</key><integer>128</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 13 Color</key><dict><key>Red Component</key><integer>128</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>128</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 14 Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>128</integer><key>Blue Component</key><integer>128</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Ansi 15 Color</key><dict><key>Red Component</key><integer>240</integer><key>Green Component</key><integer>240</integer><key>Blue Component</key><integer>240</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Foreground Color</key><dict><key>Red Component</key><integer>255</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+            <key>Background Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
+          </dict>
+        </plist>
+        """.trimIndent()
 }

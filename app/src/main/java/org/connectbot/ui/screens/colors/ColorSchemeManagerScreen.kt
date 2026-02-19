@@ -81,6 +81,7 @@ import org.connectbot.data.entity.ColorScheme
 import org.connectbot.ui.ScreenPreviews
 import org.connectbot.ui.common.getLocalizedColorSchemeDescription
 import org.connectbot.ui.theme.ConnectBotTheme
+import android.provider.OpenableColumns
 
 /**
  * Screen for managing color schemes (create, duplicate, delete).
@@ -141,13 +142,29 @@ fun ColorSchemeManagerScreen(
         uri?.let { fileUri ->
             scope.launch {
                 try {
-                    val jsonString =
+                    val fileName =
+                        context.contentResolver.query(
+                            fileUri,
+                            arrayOf(OpenableColumns.DISPLAY_NAME),
+                            null,
+                            null,
+                            null
+                        )?.use { cursor ->
+                            val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (nameIndex >= 0 && cursor.moveToFirst()) cursor.getString(nameIndex) else null
+                        } ?: "scheme"
+
+                    val contents =
                         context.contentResolver.openInputStream(fileUri)?.use { input ->
-                            input.bufferedReader().readText()
+                            input.bufferedReader(Charsets.UTF_8).readText()
                         } ?: return@launch
 
                     val schemeId =
-                        repository.importScheme(jsonString, allowOverwrite = false)
+                        if (contents.trimStart().contains("<plist", ignoreCase = true)) {
+                            repository.importIterm2Scheme(contents, nameHint = fileName, allowOverwrite = false)
+                        } else {
+                            repository.importScheme(contents, allowOverwrite = false)
+                        }
                     val schemes = repository.getAllSchemes()
                     val importedScheme = schemes.find { it.id == schemeId }
 
@@ -207,7 +224,15 @@ fun ColorSchemeManagerScreen(
             }
         },
         onImportScheme = {
-            importLauncher.launch(arrayOf("application/json", "text/plain"))
+            importLauncher.launch(
+                arrayOf(
+                    "application/json",
+                    "text/plain",
+                    "application/xml",
+                    "text/xml",
+                    "application/octet-stream",
+                )
+            )
         },
         onShowNewSchemeDialog = viewModel::showNewSchemeDialog,
         onClearError = viewModel::clearError,
