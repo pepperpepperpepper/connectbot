@@ -56,8 +56,16 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.23` (`10914024`) to afteroid/F-Droid repo (Feb 18, 2026).
+- Published **google** flavor `1.9.13.25` (`10914026`) to afteroid/F-Droid repo (Feb 19, 2026).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
+
+### New report: tmux / PTY resize not expanding (Feb 19, 2026)
+
+- Symptom: after a fold/unfold (resolution change) and IME hide/show, **tmux** behaves as if a **smaller client** is still attached (window does not expand to fill the larger display).
+- Hypothesis: terminal resize events can be **dropped/blocked** during display transitions (e.g., while `TerminalManager.resizeAllowed` is false), leaving the remote PTY at the old cols/rows.
+- Fix attempt (published in `1.9.13.25`):
+  - `TerminalBridge.parentChanged()` now **defers** resizes when `resizeAllowed` is false, and `TerminalManager.setResizeAllowed(true)` triggers bridges to **re-apply** the pending resize.
+  - `SSH.setDimensions(...)` now records the latest pixel `width/height` so `requestPTY(...)` uses real values instead of always `0x0`.
 
 ### If the bug still reproduces on-device
 
@@ -224,6 +232,13 @@ Capture:
   - Re-bind `TerminalBridge` on `TerminalView` attach/detach and force full redraw.
   - Add regression test: `TerminalSelectionCopyTest#consoleStillRendersInFullscreenAfterDisplayResizeAndKeyboardToggle`.
 - Published in: `1.9.13.23` (`10914024`) (Feb 18, 2026).
+
+- Follow-up (foldables, Feb 18, 2026): on the real foldable device, the issue appears **mode-dependent**:
+  - Outer display (~`63x43`) behaves OK.
+  - Inner/unfolded display (~`109x41`) can still go fully black when hiding the IME via the ConnectBot keyboard toggle.
+  - Test improvement: foldable render regression tests now explicitly `show → hide` the IME **after** the unfold transition so the keyboard toggle is exercised in the unfolded (`109x41`) configuration (not just before/ during the transition).
+  - Fix attempt under test: `TerminalView` now switches away from a forced `LAYER_TYPE_SOFTWARE` for **large view sizes** (foldable inner displays) to avoid software-layer composition/texture limits that can manifest as an all-black surface even when the view can render offscreen.
+  - Status: needs validation on the real device once ADB access is available; do not publish based on this note alone.
 
 ## Terminal bell / “task done” → Android notification (research + plan)
 
