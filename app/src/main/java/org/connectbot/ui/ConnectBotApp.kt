@@ -26,7 +26,6 @@ import org.connectbot.data.entity.Host
 import org.connectbot.service.TerminalManager
 import org.connectbot.ui.navigation.ConnectBotNavHost
 import org.connectbot.ui.navigation.NavDestinations
-import org.connectbot.ui.theme.ConnectBotTheme
 
 val LocalTerminalManager = compositionLocalOf<TerminalManager?> {
     null
@@ -42,42 +41,40 @@ fun ConnectBotApp(
     onNavigateToConsole: (Host) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ConnectBotTheme {
-        when (appUiState) {
-            is AppUiState.Loading -> {
-                LoadingScreen(modifier = modifier)
-            }
+    when (appUiState) {
+        is AppUiState.Loading -> {
+            LoadingScreen(modifier = modifier)
+        }
 
-            is AppUiState.MigrationInProgress -> {
-                MigrationScreen(
-                    uiState = MigrationUiState.InProgress(appUiState.state),
-                    onRetry = onRetryMigration,
+        is AppUiState.MigrationInProgress -> {
+            MigrationScreen(
+                uiState = MigrationUiState.InProgress(appUiState.state),
+                onRetry = onRetryMigration,
+                modifier = modifier
+            )
+        }
+
+        is AppUiState.MigrationFailed -> {
+            MigrationScreen(
+                uiState = MigrationUiState.Failed(
+                    appUiState.error,
+                    appUiState.debugLog
+                ),
+                onRetry = onRetryMigration,
+                modifier = modifier
+            )
+        }
+
+        is AppUiState.Ready -> {
+            CompositionLocalProvider(LocalTerminalManager provides appUiState.terminalManager) {
+                ConnectBotNavHost(
+                    navController = navController,
+                    startDestination = NavDestinations.HOST_LIST,
+                    makingShortcut = makingShortcut,
+                    onShortcutSelected = onShortcutSelected,
+                    onNavigateToConsole = onNavigateToConsole,
                     modifier = modifier
                 )
-            }
-
-            is AppUiState.MigrationFailed -> {
-                MigrationScreen(
-                    uiState = MigrationUiState.Failed(
-                        appUiState.error,
-                        appUiState.debugLog
-                    ),
-                    onRetry = onRetryMigration,
-                    modifier = modifier
-                )
-            }
-
-            is AppUiState.Ready -> {
-                CompositionLocalProvider(LocalTerminalManager provides appUiState.terminalManager) {
-                    ConnectBotNavHost(
-                        navController = navController,
-                        startDestination = NavDestinations.HOST_LIST,
-                        makingShortcut = makingShortcut,
-                        onShortcutSelected = onShortcutSelected,
-                        onNavigateToConsole = onNavigateToConsole,
-                        modifier = modifier
-                    )
-                }
             }
         }
     }

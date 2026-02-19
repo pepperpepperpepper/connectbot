@@ -38,6 +38,10 @@ object PreferenceConstants {
     const val PG_UPDN_GESTURE: String = "pgupdngesture"
     const val TAP_TO_OPEN_LINKS: String = "tapToOpenLinks"
 
+    // Material3 theming
+    const val DYNAMIC_COLOR: String = "dynamicColor"
+    const val APP_ACCENT_COLOR: String = "appAccentColor"
+
     const val KEYMODE: String = "keymode"
     const val KEY_ALWAYS_VISIBLE: String = "alwaysvisible"
 

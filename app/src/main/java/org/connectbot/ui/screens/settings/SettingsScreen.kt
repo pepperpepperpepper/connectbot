@@ -56,6 +56,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -165,6 +166,8 @@ fun SettingsScreen(
         onTitleBarHideChange = viewModel::updateTitleBarHide,
         onPgUpDnGestureChange = viewModel::updatePgUpDnGesture,
         onTapToOpenLinksChange = viewModel::updateTapToOpenLinks,
+        onDynamicColorChange = viewModel::updateDynamicColor,
+        onAppAccentColorChange = viewModel::updateAppAccentColor,
         onVolumeFontChange = viewModel::updateVolumeFont,
         onKeepAliveChange = viewModel::updateKeepAlive,
         onAlwaysVisibleChange = viewModel::updateAlwaysVisible,
@@ -207,6 +210,8 @@ fun SettingsScreenContent(
     onTitleBarHideChange: (Boolean) -> Unit,
     onPgUpDnGestureChange: (Boolean) -> Unit,
     onTapToOpenLinksChange: (Boolean) -> Unit,
+    onDynamicColorChange: (Boolean) -> Unit,
+    onAppAccentColorChange: (String) -> Unit,
     onVolumeFontChange: (Boolean) -> Unit,
     onKeepAliveChange: (Boolean) -> Unit,
     onAlwaysVisibleChange: (Boolean) -> Unit,
@@ -390,6 +395,50 @@ fun SettingsScreenContent(
                         stringResource(R.string.list_rotation_auto) to "Automatic"
                     ),
                     onValueChange = onRotationChange
+                )
+            }
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                item {
+                    SwitchPreference(
+                        title = stringResource(R.string.pref_dynamic_color_title),
+                        summary = stringResource(R.string.pref_dynamic_color_summary),
+                        checked = uiState.dynamicColor,
+                        onCheckedChange = onDynamicColorChange
+                    )
+                }
+            }
+
+            item {
+                val accentEntries = listOf(
+                    stringResource(R.string.pref_app_accent_default) to "",
+                    "Teal" to "#009688",
+                    "Indigo" to "#3F51B5",
+                    "Green" to "#4CAF50",
+                    "Amber" to "#FFC107",
+                    "Orange" to "#FF9800",
+                    "Red" to "#F44336",
+                    "Blue Gray" to "#607D8B",
+                )
+                val selectedAccentLabel =
+                    accentEntries.firstOrNull { it.second == uiState.appAccentColor }?.first
+                        ?: uiState.appAccentColor.ifBlank { stringResource(R.string.pref_app_accent_default) }
+
+                val enabled = !(Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && uiState.dynamicColor)
+                val summary =
+                    if (enabled) {
+                        selectedAccentLabel
+                    } else {
+                        stringResource(R.string.pref_app_accent_disabled_summary)
+                    }
+
+                ListPreference(
+                    title = stringResource(R.string.pref_app_accent_color_title),
+                    summary = summary,
+                    value = uiState.appAccentColor,
+                    entries = accentEntries,
+                    onValueChange = onAppAccentColorChange,
+                    enabled = enabled
                 )
             }
 
@@ -700,6 +749,7 @@ private fun ListPreference(
     value: String,
     entries: List<Pair<String, String>>,
     onValueChange: (String) -> Unit,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
@@ -707,11 +757,13 @@ private fun ListPreference(
     ListItem(
         headlineContent = { Text(title) },
         supportingContent = { Text(summary) },
-        modifier = modifier.clickable { showDialog = true }
+        modifier = modifier
+            .then(if (!enabled) Modifier.alpha(0.5f) else Modifier)
+            .clickable(enabled = enabled) { showDialog = true }
     )
     HorizontalDivider()
 
-    if (showDialog) {
+    if (showDialog && enabled) {
         ListPreferenceDialog(
             title = title,
             value = value,
@@ -1265,6 +1317,8 @@ private fun SettingsScreenPreview() {
                 fullscreen = true,
                 pgupdngesture = true,
                 tapToOpenLinks = false,
+                dynamicColor = true,
+                appAccentColor = "",
                 volumefont = true,
                 keepalive = true,
                 alwaysvisible = true,
@@ -1308,6 +1362,8 @@ private fun SettingsScreenPreview() {
             onTitleBarHideChange = {},
             onPgUpDnGestureChange = {},
             onTapToOpenLinksChange = {},
+            onDynamicColorChange = {},
+            onAppAccentColorChange = {},
             onVolumeFontChange = {},
             onKeepAliveChange = {},
             onAlwaysVisibleChange = {},

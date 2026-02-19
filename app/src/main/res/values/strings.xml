@@ -261,6 +261,18 @@
 	<!-- The category title for user interface preferences -->
 	<string name="pref_ui_category">"User interface"</string>
 
+	<!-- Name for the dynamic color preference -->
+	<string name="pref_dynamic_color_title">"Use dynamic colors"</string>
+	<!-- Summary for the dynamic color preference -->
+	<string name="pref_dynamic_color_summary">"Use your system accent colors (Android 12+)"</string>
+
+	<!-- Name for the app accent color preference -->
+	<string name="pref_app_accent_color_title">"App accent color"</string>
+	<!-- Default label for app accent color -->
+	<string name="pref_app_accent_default">"Default (blue)"</string>
+	<!-- Summary shown when app accent color is disabled due to dynamic colors -->
+	<string name="pref_app_accent_disabled_summary">"Disable dynamic colors to choose a fixed accent"</string>
+
 	<!-- Name for the rotation mode preference -->
 	<string name="pref_rotation_title">"Rotation mode"</string>
 

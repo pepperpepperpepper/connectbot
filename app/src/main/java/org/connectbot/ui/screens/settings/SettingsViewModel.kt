@@ -54,6 +54,8 @@ data class SettingsUiState(
     val fullscreen: Boolean = false,
     val pgupdngesture: Boolean = false,
     val tapToOpenLinks: Boolean = false,
+    val dynamicColor: Boolean = true,
+    val appAccentColor: String = "",
     val volumefont: Boolean = true,
     val keepalive: Boolean = true,
     val alwaysvisible: Boolean = false,
@@ -144,6 +146,8 @@ class SettingsViewModel @Inject constructor(
             fullscreen = prefs.getBoolean("fullscreen", false),
             pgupdngesture = prefs.getBoolean("pgupdngesture", false),
             tapToOpenLinks = prefs.getBoolean(PreferenceConstants.TAP_TO_OPEN_LINKS, true),
+            dynamicColor = prefs.getBoolean(PreferenceConstants.DYNAMIC_COLOR, true),
+            appAccentColor = prefs.getString(PreferenceConstants.APP_ACCENT_COLOR, "") ?: "",
             volumefont = prefs.getBoolean("volumefont", true),
             keepalive = prefs.getBoolean("keepalive", true),
             alwaysvisible = prefs.getBoolean("alwaysvisible", false),
@@ -281,6 +285,14 @@ class SettingsViewModel @Inject constructor(
 
     fun updateTapToOpenLinks(value: Boolean) {
         updateBooleanPref(PreferenceConstants.TAP_TO_OPEN_LINKS, value) { copy(tapToOpenLinks = value) }
+    }
+
+    fun updateDynamicColor(value: Boolean) {
+        updateBooleanPref(PreferenceConstants.DYNAMIC_COLOR, value) { copy(dynamicColor = value) }
+    }
+
+    fun updateAppAccentColor(value: String) {
+        updateStringPref(PreferenceConstants.APP_ACCENT_COLOR, value) { copy(appAccentColor = value) }
     }
 
     fun updateVolumeFont(value: Boolean) {

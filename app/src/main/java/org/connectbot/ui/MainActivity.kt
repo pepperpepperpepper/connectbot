@@ -58,7 +58,7 @@ import org.connectbot.data.entity.Host
 import org.connectbot.service.TerminalManager
 import org.connectbot.ui.components.DisconnectAllDialog
 import org.connectbot.ui.navigation.NavDestinations
-import org.connectbot.ui.theme.ConnectBotTheme
+import org.connectbot.ui.theme.ConnectBotThemeWithPreferences
 import org.connectbot.util.NotificationPermissionHelper
 import org.connectbot.util.PreferenceConstants
 import timber.log.Timber
@@ -137,77 +137,77 @@ import timber.log.Timber
         }
 
 	        setContent {
-            val appUiState by appViewModel.uiState.collectAsState()
-            val pendingDisconnectAll by appViewModel.pendingDisconnectAll.collectAsState()
-            val navController = rememberNavController()
-            val context = LocalContext.current
-            var showPermissionRationale by remember { mutableStateOf(false) }
+            ConnectBotThemeWithPreferences {
+                val appUiState by appViewModel.uiState.collectAsState()
+                val pendingDisconnectAll by appViewModel.pendingDisconnectAll.collectAsState()
+                val navController = rememberNavController()
+                val context = LocalContext.current
+                var showPermissionRationale by remember { mutableStateOf(false) }
 
-            LaunchedEffect(Unit) {
-                appViewModel.showPermissionRationale.collect {
-                    showPermissionRationale = true
-                }
-            }
-
-            LaunchedEffect(Unit) {
-                appViewModel.requestPermission.collect {
-                    Timber.d("Received requestPermission event, SDK_INT=${Build.VERSION.SDK_INT}")
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        Timber.d("Launching permission request")
-                        requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-                    } else {
-                        Timber.d("Skipping permission request, SDK < TIRAMISU")
+                LaunchedEffect(Unit) {
+                    appViewModel.showPermissionRationale.collect {
+                        showPermissionRationale = true
                     }
                 }
-            }
 
-            LaunchedEffect(requestedUri, navController, appUiState) {
-                Timber.d("LaunchedEffect: requestedUri=$requestedUri, appUiState=$appUiState")
-                if (appUiState is AppUiState.Ready) {
-                    requestedUri?.let { uri ->
-                        Timber.d("Processing URI: $uri")
-                        navController.let { controller ->
-                            val shouldShowRationale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                this@MainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
-                            } else {
-                                false
-                            }
+                LaunchedEffect(Unit) {
+                    appViewModel.requestPermission.collect {
+                        Timber.d("Received requestPermission event, SDK_INT=${Build.VERSION.SDK_INT}")
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            Timber.d("Launching permission request")
+                            requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            Timber.d("Skipping permission request, SDK < TIRAMISU")
+                        }
+                    }
+                }
 
-                            Timber.d("shouldShowRationale=$shouldShowRationale")
-                            if (appViewModel.checkAndRequestNotificationPermission(context, uri, shouldShowRationale)) {
-                                Timber.d("Permission check passed, handling connection")
-                                handleConnectionUri(uri, controller)
-                                requestedUri = null
-                            } else {
-                                Timber.d("Permission check blocked, waiting for permission")
+                LaunchedEffect(requestedUri, navController, appUiState) {
+                    Timber.d("LaunchedEffect: requestedUri=$requestedUri, appUiState=$appUiState")
+                    if (appUiState is AppUiState.Ready) {
+                        requestedUri?.let { uri ->
+                            Timber.d("Processing URI: $uri")
+                            navController.let { controller ->
+                                val shouldShowRationale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                    this@MainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                                } else {
+                                    false
+                                }
+
+                                Timber.d("shouldShowRationale=$shouldShowRationale")
+                                if (appViewModel.checkAndRequestNotificationPermission(context, uri, shouldShowRationale)) {
+                                    Timber.d("Permission check passed, handling connection")
+                                    handleConnectionUri(uri, controller)
+                                    requestedUri = null
+                                } else {
+                                    Timber.d("Permission check blocked, waiting for permission")
+                                }
                             }
                         }
                     }
                 }
-            }
 
-            LaunchedEffect(pendingDisconnectAll, appUiState) {
-                appViewModel.executePendingDisconnectAllIfReady()
-            }
+                LaunchedEffect(pendingDisconnectAll, appUiState) {
+                    appViewModel.executePendingDisconnectAllIfReady()
+                }
 
-            LaunchedEffect(Unit) {
-                appViewModel.finishActivity.collect {
-                    if (context is Activity) {
-                        context.finish()
+                LaunchedEffect(Unit) {
+                    appViewModel.finishActivity.collect {
+                        if (context is Activity) {
+                            context.finish()
+                        }
                     }
                 }
-            }
 
-            // Re-check permission status when activity resumes (e.g., user grants/revokes in Settings)
-            ObservePermissionOnResume { isGranted ->
-                if (pendingHostConnection != null) {
-                    // Permission state changed and we have a pending connection
-                    appViewModel.onNotificationPermissionResult(isGranted)
+                // Re-check permission status when activity resumes (e.g., user grants/revokes in Settings)
+                ObservePermissionOnResume { isGranted ->
+                    if (pendingHostConnection != null) {
+                        // Permission state changed and we have a pending connection
+                        appViewModel.onNotificationPermissionResult(isGranted)
+                    }
                 }
-            }
 
-            if (showDisconnectAllDialog) {
-                ConnectBotTheme {
+                if (showDisconnectAllDialog) {
                     DisconnectAllDialog(
                         onDismiss = {
                             Timber.d("User cancelled disconnectAll")
@@ -220,21 +220,19 @@ import timber.log.Timber
                         }
                     )
                 }
-            }
 
-            // Navigate to console when pending host connection is set
-            LaunchedEffect(pendingHostConnection, appUiState) {
-                if (appUiState is AppUiState.Ready) {
-                    pendingHostConnection?.let { host ->
-                        Timber.d("Navigating to console for pending host: ${host.nickname}")
-                        pendingHostConnection = null
-                        navController.navigate("${NavDestinations.CONSOLE}/${host.id}")
+                // Navigate to console when pending host connection is set
+                LaunchedEffect(pendingHostConnection, appUiState) {
+                    if (appUiState is AppUiState.Ready) {
+                        pendingHostConnection?.let { host ->
+                            Timber.d("Navigating to console for pending host: ${host.nickname}")
+                            pendingHostConnection = null
+                            navController.navigate("${NavDestinations.CONSOLE}/${host.id}")
+                        }
                     }
                 }
-            }
 
-            if (showPermissionRationale) {
-                ConnectBotTheme {
+                if (showPermissionRationale) {
                     NotificationPermissionRationaleDialog(
                         onDismiss = {
                             Timber.d("User dismissed permission rationale, proceeding anyway")
@@ -259,42 +257,42 @@ import timber.log.Timber
                         }
                     )
                 }
-            }
 
-            // Callback to check permission before navigating to console
-            val onNavigateToConsole: (Host) -> Unit = { host ->
-                Timber.d("onNavigateToConsole called for host: ${host.nickname}")
+                // Callback to check permission before navigating to console
+                val onNavigateToConsole: (Host) -> Unit = { host ->
+                    Timber.d("onNavigateToConsole called for host: ${host.nickname}")
 
-                // Check if connection persistence is enabled
-                val prefs = PreferenceManager.getDefaultSharedPreferences(context)
-                val persistConnections = prefs.getBoolean(PreferenceConstants.CONNECTION_PERSIST, true)
+                    // Check if connection persistence is enabled
+                    val prefs = PreferenceManager.getDefaultSharedPreferences(context)
+                    val persistConnections = prefs.getBoolean(PreferenceConstants.CONNECTION_PERSIST, true)
 
-                if (!persistConnections || NotificationPermissionHelper.isNotificationPermissionGranted(context)) {
-                    // Either persistence is disabled (no permission needed) or permission granted, navigate immediately
-                    navController.navigate("${NavDestinations.CONSOLE}/${host.id}")
-                } else {
-                    // Persistence is enabled but no permission - need to request permission
-                    Timber.d("Requesting notification permission before connection")
-                    pendingHostConnection = host
-                    val shouldShowRationale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        this@MainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                    if (!persistConnections || NotificationPermissionHelper.isNotificationPermissionGranted(context)) {
+                        // Either persistence is disabled (no permission needed) or permission granted, navigate immediately
+                        navController.navigate("${NavDestinations.CONSOLE}/${host.id}")
                     } else {
-                        false
+                        // Persistence is enabled but no permission - need to request permission
+                        Timber.d("Requesting notification permission before connection")
+                        pendingHostConnection = host
+                        val shouldShowRationale = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            this@MainActivity.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS)
+                        } else {
+                            false
+                        }
+                        appViewModel.requestNotificationPermission(shouldShowRationale)
                     }
-                    appViewModel.requestNotificationPermission(shouldShowRationale)
                 }
-            }
 
-            ConnectBotApp(
-                appUiState = appUiState,
-                navController = navController,
-                makingShortcut = makingShortcut,
-                onRetryMigration = { appViewModel.retryMigration() },
-                onShortcutSelected = { host ->
-                    createShortcutAndFinish(host)
-                },
-                onNavigateToConsole = onNavigateToConsole
-            )
+                ConnectBotApp(
+                    appUiState = appUiState,
+                    navController = navController,
+                    makingShortcut = makingShortcut,
+                    onRetryMigration = { appViewModel.retryMigration() },
+                    onShortcutSelected = { host ->
+                        createShortcutAndFinish(host)
+                    },
+                    onNavigateToConsole = onNavigateToConsole
+                )
+            }
         }
 	    }
 
