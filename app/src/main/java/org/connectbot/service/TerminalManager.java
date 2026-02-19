@@ -639,7 +639,19 @@ public class TerminalManager extends Service implements BridgeDisconnectedListen
 	 * @param resizeAllowed
 	 */
 	public void setResizeAllowed(boolean resizeAllowed) {
-		this.resizeAllowed  = resizeAllowed;
+		final boolean wasAllowed = this.resizeAllowed;
+		this.resizeAllowed = resizeAllowed;
+		if (!wasAllowed && resizeAllowed) {
+			final ArrayList<TerminalBridge> bridgesSnapshot;
+			synchronized (bridges) {
+				bridgesSnapshot = new ArrayList<>(bridges);
+			}
+			for (TerminalBridge bridge : bridgesSnapshot) {
+				if (bridge != null) {
+					bridge.onResizeAllowed();
+				}
+			}
+		}
 	}
 
 	public boolean isResizeAllowed() {

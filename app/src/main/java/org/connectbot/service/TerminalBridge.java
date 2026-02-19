@@ -92,6 +92,7 @@ public class TerminalBridge implements VDUDisplay {
 
 	private TerminalView parent = null;
 	private final Canvas canvas = new Canvas();
+	private boolean resizeDeferred = false;
 
 	private boolean disconnected = false;
 	private boolean awaitingClose = false;
@@ -608,18 +609,21 @@ public class TerminalBridge implements VDUDisplay {
 	 * terminal size information and request a PTY resize.
 	 */
 	public final synchronized void parentChanged(TerminalView parent) {
+		this.parent = parent;
 		if (manager != null && !manager.isResizeAllowed()) {
-			Log.d(TAG, "Resize is not allowed now");
+			resizeDeferred = true;
+			Log.d(TAG, "Resize is not allowed now; deferring");
 			return;
 		}
-
-		this.parent = parent;
+		resizeDeferred = false;
 		final int width = parent.getWidth();
 		final int height = parent.getHeight();
 
 		// Something has gone wrong with our layout; we're 0 width or height!
-		if (width <= 0 || height <= 0)
+		if (width <= 0 || height <= 0) {
+			resizeDeferred = true;
 			return;
+		}
 
 		ClipboardManager clipboard = (ClipboardManager) parent.getContext().getSystemService(Context.CLIPBOARD_SERVICE);
 		keyListener.setClipboardManager(clipboard);
@@ -721,12 +725,26 @@ public class TerminalBridge implements VDUDisplay {
 		Log.i(TAG, String.format("parentChanged() now width=%d, height=%d", columns, rows));
 	}
 
+	/* package */ void onResizeAllowed() {
+		final TerminalView p;
+		synchronized (this) {
+			if (!resizeDeferred) {
+				return;
+			}
+			p = parent;
+		}
+		if (p != null) {
+			parentChanged(p);
+		}
+	}
+
 	/**
 	 * Somehow our parent {@link TerminalView} was destroyed. Now we don't need
 	 * to redraw anywhere, and we can recycle our internal bitmap.
 	 */
 	public synchronized void parentDestroyed() {
 		parent = null;
+		resizeDeferred = false;
 		discardBitmap();
 	}
 

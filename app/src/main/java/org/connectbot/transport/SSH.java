@@ -132,11 +132,11 @@ public class SSH extends AbsTransport implements ConnectionMonitor, InteractiveC
 
 	private final List<PortForwardBean> portForwards = new ArrayList<>();
 
-	private int columns;
-	private int rows;
+	private int columns = 80;
+	private int rows = 24;
 
-	private int width;
-	private int height;
+	private int width = 0;
+	private int height = 0;
 
 	private String useAuthAgent = HostDatabase.AUTHAGENT_NO;
 	private String agentLockPassphrase;
@@ -751,6 +751,8 @@ public class SSH extends AbsTransport implements ConnectionMonitor, InteractiveC
 	public void setDimensions(int columns, int rows, int width, int height) {
 		this.columns = columns;
 		this.rows = rows;
+		this.width = width;
+		this.height = height;
 
 		if (sessionOpen) {
 			try {

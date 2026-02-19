@@ -46,6 +46,7 @@ import android.graphics.Paint;
 import android.graphics.Path;
 import android.graphics.RectF;
 import android.net.Uri;
+import android.os.Build;
 import android.os.AsyncTask;
 import android.preference.PreferenceManager;
 import android.text.ClipboardManager;
@@ -146,11 +147,13 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 		setFocusable(true);
 		setFocusableInTouchMode(true);
 
-		// Some things TerminalView uses is unsupported in hardware acceleration
-		// so this is using software rendering until we can replace all the
-		// instances.
-		// See: https://developer.android.com/guide/topics/graphics/hardware-accel.html#unsupported
-		setLayerTypeToSoftware();
+		// TerminalView historically forced software rendering because some operations were unsupported
+		// on early hardware-accelerated pipelines. On modern devices (especially foldables with large
+		// view sizes), forcing a software layer can lead to blank output after resizes/IME transitions.
+		//
+		// Default to software for smaller sizes, but allow switching to the default (hardware) pipeline
+		// for large view sizes to avoid software-layer texture limits.
+		updateLayerTypeForCurrentSize();
 
 		paint = new Paint();
 
@@ -285,16 +288,28 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 		new AccessibilityStateTester().execute((Void) null);
 	}
 
-	private void setLayerTypeToSoftware() {
-		setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+	private void updateLayerTypeForCurrentSize() {
+		// When a view is forced into a software layer, Android composites it as a texture in a
+		// hardware-accelerated window. Very large layers (e.g., foldable inner displays) can exceed
+		// GPU/texture limits or become unstable across display/IME transitions, resulting in a black
+		// surface even though the view can render offscreen.
+		//
+		// Use the default (hardware) pipeline when the view exceeds a conservative threshold.
+		final int w = getWidth();
+		final int h = getHeight();
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && (w > 2048 || h > 2048)) {
+			setLayerType(View.LAYER_TYPE_NONE, null);
+		} else {
+			setLayerType(View.LAYER_TYPE_SOFTWARE, null);
+		}
 	}
 
 	@Override
 	protected void onAttachedToWindow() {
 		super.onAttachedToWindow();
-		// Some device/window transitions can drop draw/layout callbacks. Re-assert software rendering
-		// and re-bind the bridge once the view is attached again.
-		setLayerTypeToSoftware();
+		// Some device/window transitions can drop draw/layout callbacks. Re-assert our intended layer
+		// type and re-bind the bridge once the view is attached again.
+		updateLayerTypeForCurrentSize();
 		post(new Runnable() {
 			@Override
 			public void run() {
@@ -400,6 +415,7 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 	protected void onSizeChanged(int w, int h, int oldw, int oldh) {
 		super.onSizeChanged(w, h, oldw, oldh);
 
+		updateLayerTypeForCurrentSize();
 		bridge.parentChanged(this);
 		// TerminalBridge.parentChanged() can adjust buffer.windowBase during resizes. Keep the
 		// selection overlay's scroll position pinned to windowBase so hit-testing stays calibrated

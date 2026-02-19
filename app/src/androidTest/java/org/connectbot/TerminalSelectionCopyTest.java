@@ -16,6 +16,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Rect;
 import android.os.Build;
 import android.os.ParcelFileDescriptor;
@@ -32,7 +33,9 @@ import android.view.InputDevice;
 import android.view.MotionEvent;
 import android.view.View;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.Collection;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -1024,8 +1027,8 @@ public class TerminalSelectionCopyTest {
 			// Simulate a foldable "unfold" / window-size-class change by changing the physical display
 			// size. Some devices restart or re-layout aggressively under IME hide/show after such a
 			// resize; we should never show "No hosts currently connected" while sessions exist.
-			execShellCommand("wm size 1200x2000");
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(1500L));
+			simulateFoldableUnfoldOrResize();
+			SystemClock.sleep(1500L);
 
 			ConsoleActivity afterResize = waitForConsoleActivity(10000L);
 			assertConsoleHasConnectedHosts(afterResize, 5000L);
@@ -1038,10 +1041,7 @@ public class TerminalSelectionCopyTest {
 			ensureSoftKeyboardVisibility(afterResize, true);
 			assertConsoleHasConnectedHosts(afterResize, 5000L);
 		} finally {
-			try {
-				execShellCommand("wm size reset");
-			} catch (Throwable ignored) {
-			}
+			resetFoldableOverrideAndWmSize();
 			settings.edit()
 					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
 					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
@@ -1079,8 +1079,8 @@ public class TerminalSelectionCopyTest {
 			assertTokenIsRenderedInBitmap(terminalView, tokenPos, token);
 
 			// Simulate foldable resize/unfold.
-			execShellCommand("wm size 1200x2000");
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(1500L));
+			simulateFoldableUnfoldOrResize();
+			SystemClock.sleep(1500L);
 
 			ConsoleActivity afterResize = waitForConsoleActivity(10000L);
 			TerminalView afterResizeTerminalView = afterResize.adapter.getCurrentTerminalView();
@@ -1088,31 +1088,31 @@ public class TerminalSelectionCopyTest {
 				afterResizeTerminalView = waitForTerminalView(afterResize, 10_000L);
 			}
 
-			BufferPosition tokenPosAfterResize = waitForTokenPosition(afterResizeTerminalView, token, 5000L);
-			scrollViewportToRow(afterResizeTerminalView, tokenPosAfterResize.row);
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
-			assertTokenIsRenderedInBitmap(afterResizeTerminalView, tokenPosAfterResize, token);
+				BufferPosition tokenPosAfterResize = waitForTokenPosition(afterResizeTerminalView, token, 5000L);
+				scrollViewportToRow(afterResizeTerminalView, tokenPosAfterResize.row);
+				onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+				assertTokenIsRenderedInBitmap(afterResizeTerminalView, tokenPosAfterResize, token);
 
-			// Reported repro: after resize/unfold, hiding the keyboard can blank the console.
-			ensureSoftKeyboardVisibility(afterResize, false);
-			// Give the UI extra time to settle after a physical display resize + IME transition,
-			// which can be slow/flaky on some devices.
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(2000L));
+				// Ensure we're exercising the keyboard toggle on the *resized* (unfolded) display. Some
+				// devices will auto-hide the IME during a display transition, which would make a
+				// "hide keyboard" step a no-op unless we explicitly show it first.
+				ensureSoftKeyboardVisibility(afterResize, true);
 
-			TerminalView afterHideTerminalView = afterResize.adapter.getCurrentTerminalView();
-			if (afterHideTerminalView == null) {
-				afterHideTerminalView = afterResizeTerminalView;
-			}
+				// Reported repro: after resize/unfold, hiding the keyboard can blank the console.
+				ensureSoftKeyboardVisibility(afterResize, false);
+				// Give the UI extra time to settle after a physical display resize + IME transition,
+				// which can be slow/flaky on some devices.
+				SystemClock.sleep(2000L);
+
+			TerminalView afterHideTerminalView = waitForTerminalView(afterResize, 20_000L);
 
 			BufferPosition tokenPosAfterHide = waitForTokenPosition(afterHideTerminalView, token, 5000L);
 			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
+			assertUiScreenshotNotBlank("after fold/unfold + IME hide (non-fullscreen)");
 		} finally {
-			try {
-				execShellCommand("wm size reset");
-			} catch (Throwable ignored) {
-			}
+			resetFoldableOverrideAndWmSize();
 			settings.edit()
 					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
 					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
@@ -1154,8 +1154,8 @@ public class TerminalSelectionCopyTest {
 			assertTokenIsRenderedInBitmap(terminalView, tokenPos, token);
 
 			// Simulate foldable resize/unfold.
-			execShellCommand("wm size 1200x2000");
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(1500L));
+			simulateFoldableUnfoldOrResize();
+			SystemClock.sleep(1500L);
 
 			ConsoleActivity afterResize = waitForConsoleActivity(10000L);
 			TerminalView afterResizeTerminalView = afterResize.adapter.getCurrentTerminalView();
@@ -1163,30 +1163,26 @@ public class TerminalSelectionCopyTest {
 				afterResizeTerminalView = waitForTerminalView(afterResize, 10_000L);
 			}
 
-			BufferPosition tokenPosAfterResize = waitForTokenPosition(afterResizeTerminalView, token, 5000L);
-			scrollViewportToRow(afterResizeTerminalView, tokenPosAfterResize.row);
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
-			assertTokenIsRenderedInBitmap(afterResizeTerminalView, tokenPosAfterResize, token);
+				BufferPosition tokenPosAfterResize = waitForTokenPosition(afterResizeTerminalView, token, 5000L);
+				scrollViewportToRow(afterResizeTerminalView, tokenPosAfterResize.row);
+				onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+				assertTokenIsRenderedInBitmap(afterResizeTerminalView, tokenPosAfterResize, token);
 
-			// Reported repro on foldables: after resize/unfold in fullscreen mode, hiding the keyboard
-			// can blank the console.
-			ensureSoftKeyboardVisibility(afterResize, false);
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(2000L));
+				// Reported repro on foldables: after resize/unfold in fullscreen mode, hiding the keyboard
+				// can blank the console.
+				ensureSoftKeyboardVisibility(afterResize, true);
+				ensureSoftKeyboardVisibility(afterResize, false);
+				SystemClock.sleep(2000L);
 
-			TerminalView afterHideTerminalView = afterResize.adapter.getCurrentTerminalView();
-			if (afterHideTerminalView == null) {
-				afterHideTerminalView = afterResizeTerminalView;
-			}
+			TerminalView afterHideTerminalView = waitForTerminalView(afterResize, 20_000L);
 
 			BufferPosition tokenPosAfterHide = waitForTokenPosition(afterHideTerminalView, token, 5000L);
 			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
+			assertUiScreenshotNotBlank("after fold/unfold + IME hide (fullscreen)");
 		} finally {
-			try {
-				execShellCommand("wm size reset");
-			} catch (Throwable ignored) {
-			}
+			resetFoldableOverrideAndWmSize();
 			settings.edit()
 					.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
 					.putString(PreferenceConstants.SCROLLBACK, wasScrollback)
@@ -1244,17 +1240,15 @@ public class TerminalSelectionCopyTest {
 			assertTokenIsRenderedInBitmap(afterDensityTerminalView, tokenPosAfterDensity, token);
 
 			ensureSoftKeyboardVisibility(afterDensity, false);
-			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(2000L));
+			SystemClock.sleep(2000L);
 
-			TerminalView afterHideTerminalView = afterDensity.adapter.getCurrentTerminalView();
-			if (afterHideTerminalView == null) {
-				afterHideTerminalView = afterDensityTerminalView;
-			}
+			TerminalView afterHideTerminalView = waitForTerminalView(afterDensity, 20_000L);
 
 			BufferPosition tokenPosAfterHide = waitForTokenPosition(afterHideTerminalView, token, 5000L);
 			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
+			assertUiScreenshotNotBlank("after density change + IME hide");
 		} finally {
 			try {
 				execShellCommand("wm density reset");
@@ -1655,15 +1649,28 @@ public class TerminalSelectionCopyTest {
 		final long start = SystemClock.uptimeMillis();
 		while (SystemClock.uptimeMillis() - start < timeoutMillis) {
 			final TerminalView[] view = new TerminalView[1];
+			final boolean[] ready = new boolean[1];
 			getInstrumentation().runOnMainSync(new Runnable() {
 				@Override
 				public void run() {
 					if (consoleActivity.adapter != null) {
 						view[0] = consoleActivity.adapter.getCurrentTerminalView();
+						if (view[0] != null) {
+							boolean hasSize = view[0].getWidth() > 0 && view[0].getHeight() > 0;
+							boolean attached = Build.VERSION.SDK_INT < Build.VERSION_CODES.KITKAT || view[0].isAttachedToWindow();
+							boolean shown = view[0].isShown();
+
+							Rect visibleRect = new Rect();
+							boolean visible = view[0].getGlobalVisibleRect(visibleRect)
+									&& visibleRect.width() > 0
+									&& visibleRect.height() > 0;
+
+							ready[0] = hasSize && attached && shown && visible;
+						}
 					}
 				}
 			});
-			if (view[0] != null && view[0].getWidth() > 0 && view[0].getHeight() > 0) {
+			if (ready[0]) {
 				return view[0];
 			}
 			SystemClock.sleep(50L);
@@ -1685,6 +1692,47 @@ public class TerminalSelectionCopyTest {
 		});
 
 		assertThat("Overlay scroll position must align to windowBase", overlayScrollY[0], equalTo(expectedScrollY[0]));
+	}
+
+	private static void assertUiScreenshotNotBlank(String context) {
+		Bitmap screenshot = null;
+		try {
+			screenshot = takeActiveDisplayScreenshot();
+		} catch (Throwable ignored) {
+		}
+		if (screenshot == null) {
+			screenshot = getInstrumentation().getUiAutomation().takeScreenshot();
+		}
+		if (screenshot == null) {
+			throw new AssertionError("Unable to take screenshot (" + context + ")");
+		}
+
+		try {
+			int width = screenshot.getWidth();
+			int height = screenshot.getHeight();
+			int x0 = width / 4;
+			int x1 = (width * 3) / 4;
+			int y0 = height / 4;
+			int y1 = (height * 3) / 4;
+
+			int step = Math.max(1, Math.min(width, height) / 200);
+			int nonBlack = 0;
+			int total = 0;
+			for (int y = y0; y < y1; y += step) {
+				for (int x = x0; x < x1; x += step) {
+					int color = screenshot.getPixel(x, y);
+					total++;
+					if ((color & 0x00FFFFFF) != 0) {
+						nonBlack++;
+					}
+				}
+			}
+
+			double fraction = total == 0 ? 0.0 : (nonBlack / (double) total);
+			assertThat("UI must not be blank (" + context + "), nonBlackFraction=" + fraction, fraction, greaterThan(0.001));
+		} finally {
+			screenshot.recycle();
+		}
 	}
 
 	private static void assertHitTestingMatchesTerminalGrid(final TerminalView terminalView) {
@@ -2393,24 +2441,180 @@ public class TerminalSelectionCopyTest {
 		}
 	}
 
-	private static void wakeAndUnlockDeviceIfPossible() {
-		// Some devices/profiles can start in a locked state even after sys.boot_completed=1, which
-		// causes Espresso to report "No activities in stage RESUMED" when attempting to interact
-		// with the app UI.
-		try {
-			execShellCommand("input keyevent 224"); // KEYCODE_WAKEUP
-		} catch (Throwable ignored) {
+		private static void wakeAndUnlockDeviceIfPossible() {
+			// Some devices/profiles can start in a locked state even after sys.boot_completed=1, which
+			// causes Espresso to report "No activities in stage RESUMED" when attempting to interact
+			// with the app UI.
+			try {
+				execShellCommand("input keyevent 224"); // KEYCODE_WAKEUP
+			} catch (Throwable ignored) {
+			}
+			try {
+				execShellCommand("wm dismiss-keyguard");
+			} catch (Throwable ignored) {
+			}
+			// If the notification shade is open, it can hold window focus and cause Espresso to fail with
+			// RootViewWithoutFocusException even though the app is visible.
+			try {
+				execShellCommand("cmd statusbar collapse");
+			} catch (Throwable ignored) {
+			}
 		}
-		try {
-			execShellCommand("wm dismiss-keyguard");
-		} catch (Throwable ignored) {
-		}
-	}
 
 	private static void execShellCommand(String command) throws IOException {
 		ParcelFileDescriptor pfd = getInstrumentation().getUiAutomation().executeShellCommand(command);
 		if (pfd != null) {
 			pfd.close();
+		}
+	}
+
+	private static String execShellCommandForOutput(String command) throws IOException {
+		ParcelFileDescriptor pfd = getInstrumentation().getUiAutomation().executeShellCommand(command);
+		if (pfd == null) {
+			return "";
+		}
+
+		try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(pfd);
+		     ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+			byte[] buffer = new byte[1024];
+			int read;
+			while ((read = in.read(buffer)) != -1) {
+				out.write(buffer, 0, read);
+			}
+			return out.toString("UTF-8").replace("\r", "").trim();
+		}
+	}
+
+	private static byte[] execShellCommandForBytes(String command) throws IOException {
+		ParcelFileDescriptor pfd = getInstrumentation().getUiAutomation().executeShellCommand(command);
+		if (pfd == null) {
+			return new byte[0];
+		}
+
+		try (InputStream in = new ParcelFileDescriptor.AutoCloseInputStream(pfd);
+		     ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+			byte[] buffer = new byte[8192];
+			int read;
+			while ((read = in.read(buffer)) != -1) {
+				out.write(buffer, 0, read);
+			}
+			return out.toByteArray();
+		}
+	}
+
+	private static Bitmap takeActiveDisplayScreenshot() throws IOException {
+		// Prefer capturing via `screencap -d <id>` so we target the active foldable display (inner vs outer).
+		String sf = execShellCommandForOutput("dumpsys SurfaceFlinger --display-id");
+		long port0 = -1L;
+		long port1 = -1L;
+		for (String rawLine : sf.split("\n")) {
+			String line = rawLine.trim();
+			if (!line.startsWith("Display ")) {
+				continue;
+			}
+			int idStart = "Display ".length();
+			int idEnd = line.indexOf(' ', idStart);
+			if (idEnd <= idStart) {
+				continue;
+			}
+			long displayId;
+			try {
+				displayId = Long.parseLong(line.substring(idStart, idEnd));
+			} catch (NumberFormatException ignored) {
+				continue;
+			}
+			int portIdx = line.indexOf("port=");
+			if (portIdx < 0) {
+				continue;
+			}
+			int portStart = portIdx + "port=".length();
+			int portEnd = portStart;
+			while (portEnd < line.length() && Character.isDigit(line.charAt(portEnd))) {
+				portEnd++;
+			}
+			int port;
+			try {
+				port = Integer.parseInt(line.substring(portStart, portEnd));
+			} catch (NumberFormatException ignored) {
+				continue;
+			}
+			if (port == 0) {
+				port0 = displayId;
+			} else if (port == 1) {
+				port1 = displayId;
+			}
+		}
+
+		long displayId = port0;
+		try {
+			String state = execShellCommandForOutput("cmd device_state print-state");
+			if ("0".equals(state) && port1 != -1L) {
+				displayId = port1;
+			}
+		} catch (Throwable ignored) {
+			// Ignore; fall back to port0.
+		}
+		if (displayId == -1L) {
+			displayId = port1;
+		}
+		if (displayId == -1L) {
+			return null;
+		}
+
+		byte[] png = execShellCommandForBytes("screencap -p -d " + displayId);
+		if (png.length == 0) {
+			return null;
+		}
+		return BitmapFactory.decodeByteArray(png, 0, png.length);
+	}
+
+	private static boolean deviceSupportsDeviceStateOpenedClosed() {
+		try {
+			String states = execShellCommandForOutput("cmd device_state print-states-simple");
+			String normalized = states.toUpperCase(Locale.US);
+			return normalized.contains("OPENED") && normalized.contains("CLOSED");
+		} catch (Throwable ignored) {
+			return false;
+		}
+	}
+
+	private static boolean waitForDeviceState(String expectedState, long timeoutMillis) throws IOException {
+		final long start = SystemClock.uptimeMillis();
+		while (SystemClock.uptimeMillis() - start < timeoutMillis) {
+			String state = execShellCommandForOutput("cmd device_state print-state");
+			if (expectedState.equals(state)) {
+				return true;
+			}
+			SystemClock.sleep(100L);
+		}
+		return false;
+	}
+
+	private static void simulateFoldableUnfoldOrResize() throws IOException {
+		// On real foldables (Pixel Fold, etc), prefer overriding the device state since that more closely
+		// matches hinge-driven configuration changes (outer display ↔ inner display) than a raw wm size override.
+		if (deviceSupportsDeviceStateOpenedClosed()) {
+			// Fold (CLOSED) then unfold (OPENED) to exercise the full transition path.
+			execShellCommand("cmd device_state state 0"); // CLOSED
+			final long timeoutMillis = 5000L;
+			waitForDeviceState("0", timeoutMillis);
+			execShellCommand("cmd device_state state 2"); // OPENED
+			if (waitForDeviceState("2", timeoutMillis)) {
+				return;
+			}
+			// Fall through to wm size as a last resort if the override didn't "stick".
+		}
+		execShellCommand("wm size 1200x2000");
+	}
+
+	private static void resetFoldableOverrideAndWmSize() {
+		try {
+			execShellCommand("cmd device_state state reset");
+		} catch (Throwable ignored) {
+		}
+		try {
+			execShellCommand("wm size reset");
+		} catch (Throwable ignored) {
 		}
 	}
 
