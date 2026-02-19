@@ -315,6 +315,31 @@ class ColorSchemeRepositoryTest {
         assertEquals(0, defaults.second)
     }
 
+    @Test
+    fun importGnomeTerminalScheme_Valid_PersistsPaletteAndDefaults() = runBlocking {
+        val dconf = gnomeTerminalDconf()
+
+        val schemeId =
+            repository.importGnomeTerminalScheme(dconf, nameHint = "My GNOME Theme.dconf", allowOverwrite = false)
+        assertTrue("Imported scheme ID should be positive", schemeId > 0)
+
+        val schemes = repository.getAllSchemes()
+        val scheme = schemes.find { it.id == schemeId }
+        assertNotNull("Imported scheme should exist", scheme)
+        assertEquals("My GNOME Theme", scheme?.name)
+
+        // Palette should match the imported ANSI colors.
+        val palette = repository.getSchemeColors(schemeId)
+        assertEquals("Should have 16 colors", 16, palette.size)
+        assertEquals(0xFF000000.toInt(), palette[0])
+        assertEquals(0xFFFF0000.toInt(), palette[1])
+
+        // Foreground/background defaults in the fixture match ANSI 1 and ANSI 0.
+        val defaults = repository.getSchemeDefaults(schemeId)
+        assertEquals(1, defaults.first)
+        assertEquals(0, defaults.second)
+    }
+
     private fun itermcolorsXml(): String =
         """
         <?xml version="1.0" encoding="UTF-8"?>
@@ -341,5 +366,13 @@ class ColorSchemeRepositoryTest {
             <key>Background Color</key><dict><key>Red Component</key><integer>0</integer><key>Green Component</key><integer>0</integer><key>Blue Component</key><integer>0</integer><key>Alpha Component</key><real>1</real></dict>
           </dict>
         </plist>
+        """.trimIndent()
+
+    private fun gnomeTerminalDconf(): String =
+        """
+        [/]
+        foreground-color='rgb(255,0,0)'
+        background-color='rgb(0,0,0)'
+        palette=['rgb(0,0,0)', 'rgb(255,0,0)', 'rgb(0,255,0)', 'rgb(0,0,255)', 'rgb(255,255,0)', 'rgb(255,0,255)', 'rgb(0,255,255)', 'rgb(255,255,255)', 'rgb(128,128,128)', 'rgb(128,0,0)', 'rgb(0,128,0)', 'rgb(0,0,128)', 'rgb(128,128,0)', 'rgb(128,0,128)', 'rgb(0,128,128)', 'rgb(240,240,240)']
         """.trimIndent()
 }

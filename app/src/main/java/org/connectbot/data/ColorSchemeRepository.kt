@@ -438,6 +438,68 @@ class ColorSchemeRepository @Inject constructor(
     }
 
     /**
+     * Import a GNOME Terminal scheme from common exports (e.g. `dconf dump` or Gogh theme scripts).
+     *
+     * GNOME Terminal schemes include a 16-color palette and may include separate foreground/background
+     * colors. Our schemes store defaults as *indices* into the 16-color palette, so we choose the
+     * closest ANSI index for the provided FG/BG colors (when present).
+     *
+     * @param text The scheme text
+     * @param nameHint A filename or user-visible name to use as the imported scheme name
+     * @param allowOverwrite If false and name exists, will auto-rename
+     * @return The ID of the imported scheme
+     */
+    suspend fun importGnomeTerminalScheme(
+        text: String,
+        nameHint: String,
+        allowOverwrite: Boolean = false
+    ): Long = withContext(dispatchers.io) {
+        val parsed = GnomeTerminalColorSchemeParser.parse(text)
+        val palette = parsed.ansiColors
+
+        var finalName = normalizeImportedSchemeName(nameHint).ifBlank { "Imported GNOME Terminal" }
+        if (schemeNameExists(finalName)) {
+            if (!allowOverwrite) {
+                var counter = 1
+                while (schemeNameExists("$finalName ($counter)")) {
+                    counter++
+                }
+                finalName = "$finalName ($counter)"
+            }
+        }
+
+        val newSchemeId = createCustomScheme(
+            name = finalName,
+            description = "Imported from GNOME Terminal",
+            basedOnSchemeId = -1
+        )
+
+        // Override the palette with imported ANSI colors.
+        palette.forEachIndexed { index, color ->
+            val colorEntry = ColorPalette(
+                schemeId = newSchemeId,
+                colorIndex = index,
+                color = color
+            )
+            colorSchemeDao.insertOrUpdateColor(colorEntry)
+        }
+
+        // If the scheme includes explicit FG/BG colors, pick the closest ANSI indices.
+        val scheme = colorSchemeDao.getById(newSchemeId)
+        if (scheme != null) {
+            val fgIndex =
+                parsed.foregroundColor?.let { closestAnsiIndex(it, palette) } ?: scheme.foreground
+            val bgIndex =
+                parsed.backgroundColor?.let { closestAnsiIndex(it, palette) } ?: scheme.background
+            if (fgIndex != scheme.foreground || bgIndex != scheme.background) {
+                colorSchemeDao.update(scheme.copy(foreground = fgIndex, background = bgIndex))
+            }
+        }
+
+        newSchemeId
+    }
+
+    /**
      * Blocking wrapper for getSchemeColors - for use from non-coroutine code.
      * Returns the color palette for a scheme as an IntArray.
      */
@@ -462,6 +524,8 @@ class ColorSchemeRepository @Inject constructor(
             lower.endsWith(".itermcolors") -> trimmed.dropLast(".itermcolors".length)
             lower.endsWith(".xml") -> trimmed.dropLast(".xml".length)
             lower.endsWith(".json") -> trimmed.dropLast(".json".length)
+            lower.endsWith(".dconf") -> trimmed.dropLast(".dconf".length)
+            lower.endsWith(".sh") -> trimmed.dropLast(".sh".length)
             else -> trimmed
         }.trim()
     }

@@ -77,6 +77,7 @@ import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import kotlinx.coroutines.launch
 import org.connectbot.R
+import org.connectbot.data.GnomeTerminalColorSchemeParser
 import org.connectbot.data.entity.ColorScheme
 import org.connectbot.ui.ScreenPreviews
 import org.connectbot.ui.common.getLocalizedColorSchemeDescription
@@ -135,7 +136,7 @@ fun ColorSchemeManagerScreen(
         }
     }
 
-    // Import launcher - selects an existing JSON file
+    // Import launcher - selects an existing scheme file (JSON, iTerm2 plist, GNOME Terminal export)
     val importLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
@@ -159,11 +160,21 @@ fun ColorSchemeManagerScreen(
                             input.bufferedReader(Charsets.UTF_8).readText()
                         } ?: return@launch
 
+                    val trimmedStart = contents.trimStart()
                     val schemeId =
-                        if (contents.trimStart().contains("<plist", ignoreCase = true)) {
+                        when {
+                            trimmedStart.startsWith("<") && trimmedStart.contains("<plist", ignoreCase = true) -> {
                             repository.importIterm2Scheme(contents, nameHint = fileName, allowOverwrite = false)
-                        } else {
-                            repository.importScheme(contents, allowOverwrite = false)
+                            }
+                            trimmedStart.startsWith("{") -> {
+                                repository.importScheme(contents, allowOverwrite = false)
+                            }
+                            GnomeTerminalColorSchemeParser.looksLikeGnomeTerminalScheme(contents) -> {
+                                repository.importGnomeTerminalScheme(contents, nameHint = fileName, allowOverwrite = false)
+                            }
+                            else -> {
+                                repository.importScheme(contents, allowOverwrite = false)
+                            }
                         }
                     val schemes = repository.getAllSchemes()
                     val importedScheme = schemes.find { it.id == schemeId }

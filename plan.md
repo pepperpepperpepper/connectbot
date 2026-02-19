@@ -330,6 +330,13 @@ Capture:
   - Imports `Ansi 0 Color` … `Ansi 15 Color`.
   - If present, `Foreground Color` / `Background Color` are mapped to the closest ANSI indices for scheme defaults.
 
+## Color themes (GNOME Terminal)
+
+- Added import of common GNOME Terminal scheme exports in the Color Scheme Manager:
+  - `dconf dump` / `gsettings get` style: `palette=[...]` plus optional `foreground-color` / `background-color`.
+  - Gogh-style theme scripts: `PALETTE="#...:#... (16 colors)"` plus optional `FOREGROUND_COLOR` / `BACKGROUND_COLOR`.
+  - If present, explicit foreground/background colors are mapped to the closest ANSI indices for scheme defaults.
+
 ## Shell navigation (higher priority)
 
 - **Requirement:** the *remote shell* must respond correctly to standard **readline emacs-mode** and **vi-mode** keybindings using a real keyboard (hardware keyboard or an IME that sends key events).
