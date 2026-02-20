@@ -2558,7 +2558,15 @@ public class TerminalSelectionCopyTest {
 			displayId = port1;
 		}
 		if (displayId == -1L) {
-			return null;
+			// Many single-display environments (including Genymotion SaaS phone recipes) don't expose
+			// foldable-style display ports. In that case, prefer plain `screencap -p` since
+			// UiAutomation.takeScreenshot() can return an all-black bitmap during wm size/density
+			// transitions on some Android versions.
+			byte[] png = execShellCommandForBytes("screencap -p");
+			if (png.length == 0) {
+				return null;
+			}
+			return BitmapFactory.decodeByteArray(png, 0, png.length);
 		}
 
 		byte[] png = execShellCommandForBytes("screencap -p -d " + displayId);
