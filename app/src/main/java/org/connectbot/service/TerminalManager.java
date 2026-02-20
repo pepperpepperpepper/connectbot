@@ -61,6 +61,8 @@ import android.os.Vibrator;
 import android.preference.PreferenceManager;
 import android.util.Log;
 
+import androidx.core.content.ContextCompat;
+
 /**
  * Manager for SSH connections that runs as a service. This service holds a list
  * of currently connected SSH bridges that are ready for connection up to a GUI
@@ -168,7 +170,9 @@ public class TerminalManager extends Service implements BridgeDisconnectedListen
 
 		connectivityManager = new ConnectivityReceiver(this, lockingWifi);
 
-		registerReceiver(colorsChangedReceiver, new IntentFilter(ACTION_COLORS_CHANGED));
+		// Android 13+ requires declaring whether dynamic receivers are exported.
+		ContextCompat.registerReceiver(this, colorsChangedReceiver, new IntentFilter(ACTION_COLORS_CHANGED),
+			ContextCompat.RECEIVER_NOT_EXPORTED);
 
 		ProviderLoader.load(this, this);
 	}
