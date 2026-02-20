@@ -28,13 +28,14 @@ public class ConnectbotJUnitRunner extends AndroidJUnitRunner {
 		private static final String TAG = "CB.JUnitRunner";
 
 		private static boolean shouldUseTestButler() {
-				// TestButler is implemented via UiAutomation and has been observed to crash the
-				// instrumentation process on newer Android versions (e.g., Android 16) with:
-				// "Cannot call disconnect() while connecting UiAutomation".
+				// TestButler is implemented via UiAutomation and can destabilize instrumentation on
+				// newer Android versions with errors like:
+				// - "Cannot call disconnect() while connecting UiAutomation"
+				// - "UiAutomationService already registered"
 				//
 				// Gradle's `testOptions.animationsDisabled = true` already disables animations for tests,
 				// so TestButler is primarily a best-effort convenience on older devices.
-				return Build.VERSION.SDK_INT < Build.VERSION_CODES.VANILLA_ICE_CREAM;
+				return Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE;
 		}
 
 		@Override
