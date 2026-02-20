@@ -2440,9 +2440,15 @@ public class TerminalSelectionCopyTest {
 		if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
 			return;
 		}
-		getInstrumentation().getUiAutomation().grantRuntimePermission(
-				context.getPackageName(),
-				Manifest.permission.POST_NOTIFICATIONS);
+		try {
+			getInstrumentation().getUiAutomation().grantRuntimePermission(
+					context.getPackageName(),
+					Manifest.permission.POST_NOTIFICATIONS);
+		} catch (Throwable ignored) {
+			// Best-effort. Some environments can fail to grant runtime permissions even when the
+			// permission is declared (e.g., UiAutomation instability). Tests should still be able
+			// to run without this grant; the goal is only to avoid permission prompts.
+		}
 	}
 
 	private static void enableImeOnHardKeyboardIfPossible() {
