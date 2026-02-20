@@ -56,7 +56,8 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.25` (`10914026`) to afteroid/F-Droid repo (Feb 19, 2026).
+- Published **google** flavor `1.9.13.32` (`10914033`) to afteroid/F-Droid repo (Feb 20, 2026).
+- Known-bad historical build: `1.9.13.31` (`10914032`) crashed at startup on Android 14+ because a dynamic receiver was registered without `RECEIVER_EXPORTED`/`RECEIVER_NOT_EXPORTED` (do not republish).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
 ### New report: tmux / PTY resize not expanding (Feb 19, 2026)
