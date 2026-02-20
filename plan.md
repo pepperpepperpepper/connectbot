@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.33` (`10914034`) to afteroid/F-Droid repo (Feb 20, 2026).
+- Published **google** flavor `1.9.13.34` (`10914035`) to afteroid/F-Droid repo (Feb 20, 2026).
 - Known-bad historical build: `1.9.13.31` (`10914032`) crashed at startup on Android 14+ because a dynamic receiver was registered without `RECEIVER_EXPORTED`/`RECEIVER_NOT_EXPORTED` (do not republish).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
@@ -380,6 +380,7 @@ Capture:
 - If `cat -v` shows `^[[D` (plain Left Arrow) even when holding Ctrl, ConnectBot is not seeing Ctrl for that key. Common causes:
   - Android meta-state quirks (some devices set only `META_CTRL_LEFT_ON`/`META_CTRL_RIGHT_ON`, not `META_CTRL_ON`).
   - Keyboard quirks: some keyboards send separate `KEYCODE_CTRL_LEFT/RIGHT` down/up events but omit Ctrl meta-state on non-printable keys (arrows). Mitigation: track hardware Ctrl held state so Ctrl+arrows still emit xterm sequences.
+  - Emulated arrow keys: if you’re using ConnectBot’s on-screen arrow buttons, they must route through the same key listener pipeline to apply modifiers (fixed in `1.9.13.34`).
 - If the remote shell doesn’t move by word, it’s usually a **readline keybinding** issue on the remote host (or inside tmux). Quick checks:
   - In the remote shell, run `cat -v`, press Ctrl+Left, and confirm you see `^[[1;5D`.
   - Add to remote `~/.inputrc` (bash/readline):
