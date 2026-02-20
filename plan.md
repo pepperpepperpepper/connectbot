@@ -198,6 +198,19 @@ Capture:
   - `ConsoleActivity` now handles `screenSize|smallestScreenSize|screenLayout` config changes so IME-driven window-size changes don’t restart the activity on foldables/resizable windows.
   - Empty-hosts UI now keys off `adapter.getCount()` (not `ViewPager.getChildCount()`), and we update it after binding/disconnect.
   - Regression test: `TerminalSelectionCopyTest#consoleKeepsConnectedHostsAfterDisplayResizeAndKeyboardToggle`.
+
+## Keyboard navigation (xterm modified keys / Ctrl+Arrow)
+
+- User report (Feb 20, 2026, `1.9.13.34` / `10914035`):
+  - On-screen Ctrl + arrows => `^[[1;5D` ✅
+  - On-screen Ctrl + *keyboard* arrows => `^[[1;5D` ✅
+  - *Keyboard* Ctrl + *keyboard* arrows => `^[[D` ❌ (no Ctrl modifier reaching the arrow key handler)
+  - Yet *keyboard* Ctrl + letters works (e.g., Ctrl-A/Ctrl-E readline navigation), suggesting the IME/Android input pipeline may be inconsistent for Ctrl meta on non-printable keys.
+
+- Fix attempt (pending publish as next `1.9.13.35`):
+  - Track global hardware Ctrl-down at the Activity level (`ConsoleActivity.dispatchKeyEvent`) and feed it into `TerminalKeyListener` as a fallback when Ctrl meta is missing on DPAD keys.
+  - Add a 2-minute “stuck Ctrl” safety timeout and reset global Ctrl state on `ConsoleActivity.onPause()`.
+  - Unit coverage: `TerminalKeyListenerXtermKeysTest#ctrlLeftArrowUsesGlobalCtrlStateWhenCtrlKeyEventIsNotDeliveredToListener`.
 - Published in: `1.9.13.17` (`10914018`) (Feb 16, 2026).
 
 - Follow-up user report (foldables): after unfolding, hiding the keyboard could result in a **blank black console** (sessions still exist but `ViewPager` has no child views rendered).
