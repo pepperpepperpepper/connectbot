@@ -42,6 +42,10 @@ import de.mud.terminal.vt320;
 public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceChangeListener {
 	private static final String TAG = "CB.OnKeyListener";
 
+	private final static int HC_META_SHIFT_MASK = KeyEvent.META_SHIFT_ON
+			| KeyEvent.META_SHIFT_LEFT_ON
+			| KeyEvent.META_SHIFT_RIGHT_ON;
+
 	// Constants for our private tracking of modifier state
 	public final static int OUR_CTRL_ON = 0x01;
 	public final static int OUR_CTRL_LOCK = 0x02;
@@ -103,6 +107,38 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 	private String encoding;
 
 	private final SharedPreferences prefs;
+
+	private static boolean isCtrlPressed(int metaState) {
+		return (metaState & HC_META_CTRL_MASK) != 0;
+	}
+
+	private static boolean isAltPressed(int metaState) {
+		return (metaState & HC_META_ALT_MASK) != 0;
+	}
+
+	private static boolean isShiftPressed(int metaState) {
+		return (metaState & HC_META_SHIFT_MASK) != 0;
+	}
+
+	private static int getXtermModifierParam(boolean shift, boolean alt, boolean ctrl) {
+		return 1 + (shift ? 1 : 0) + (alt ? 2 : 0) + (ctrl ? 4 : 0);
+	}
+
+	private void writeXtermCsi(String sequence) throws IOException {
+		bridge.transport.write(sequence.getBytes(encoding != null ? encoding : "UTF-8"));
+	}
+
+	private void writeXtermModifiedCsi(boolean shift, boolean alt, boolean ctrl, char finalChar)
+			throws IOException {
+		final int modifierParam = getXtermModifierParam(shift, alt, ctrl);
+		writeXtermCsi(String.format("\u001b[1;%d%c", modifierParam, finalChar));
+	}
+
+	private void writeXtermModifiedCsiTilde(boolean shift, boolean alt, boolean ctrl, int code)
+			throws IOException {
+		final int modifierParam = getXtermModifierParam(shift, alt, ctrl);
+		writeXtermCsi(String.format("\u001b[%d;%d~", code, modifierParam));
+	}
 
 	public TerminalKeyListener(TerminalManager manager,
 			TerminalBridge bridge,
@@ -283,6 +319,8 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			if ((ourMetaState & OUR_CTRL_MASK) != 0)
 				derivedMetaState |= HC_META_CTRL_ON;
 
+			final boolean shiftPressed = isShiftPressed(derivedMetaState);
+
 			if ((ourMetaState & OUR_TRANSIENT) != 0) {
 				ourMetaState &= ~OUR_TRANSIENT;
 				bridge.redraw();
@@ -293,38 +331,38 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 				if (sendFunctionKey(keyCode))
 					return true;
 			}
-			if (controlNumbersAreFKeys && (derivedMetaState & HC_META_CTRL_ON) != 0) {
+			if (controlNumbersAreFKeys && isCtrlPressed(derivedMetaState)) {
 				if (sendFunctionKey(keyCode))
 					return true;
 			}
 
 			// CTRL-SHIFT-C to copy.
 			if (keyCode == KeyEvent.KEYCODE_C
-					&& (derivedMetaState & HC_META_CTRL_ON) != 0
-					&& (derivedMetaState & KeyEvent.META_SHIFT_ON) != 0) {
+					&& isCtrlPressed(derivedMetaState)
+					&& shiftPressed) {
 				bridge.copyCurrentSelection();
 				return true;
 			}
 
 			// CTRL-SHIFT-V to paste.
 			if (keyCode == KeyEvent.KEYCODE_V
-					&& (derivedMetaState & HC_META_CTRL_ON) != 0
-					&& (derivedMetaState & KeyEvent.META_SHIFT_ON) != 0
+					&& isCtrlPressed(derivedMetaState)
+					&& shiftPressed
 					&& clipboard.hasText()) {
 				bridge.injectString(clipboard.getText().toString());
 				return true;
 			}
 
 			if ((keyCode == KeyEvent.KEYCODE_EQUALS
-					&& (derivedMetaState & HC_META_CTRL_ON) != 0
-					&& (derivedMetaState & KeyEvent.META_SHIFT_ON) != 0)
+					&& isCtrlPressed(derivedMetaState)
+					&& shiftPressed)
 					|| (keyCode == KeyEvent.KEYCODE_PLUS
-					&& (derivedMetaState & HC_META_CTRL_ON) != 0)) {
+					&& isCtrlPressed(derivedMetaState))) {
 				bridge.increaseFontSize();
 				return true;
 			}
 
-			if (keyCode == KeyEvent.KEYCODE_MINUS && (derivedMetaState & HC_META_CTRL_ON) != 0) {
+			if (keyCode == KeyEvent.KEYCODE_MINUS && isCtrlPressed(derivedMetaState)) {
 				bridge.decreaseFontSize();
 				return true;
 			}
@@ -344,7 +382,7 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			}
 
 			// Remove shift from the modifier state as it has already been used by getUnicodeChar.
-			derivedMetaState &= ~KeyEvent.META_SHIFT_ON;
+			derivedMetaState &= ~HC_META_SHIFT_MASK;
 
 			if ((uchar & KeyCharacterMap.COMBINING_ACCENT) != 0) {
 				mDeadKey = uchar & KeyCharacterMap.COMBINING_ACCENT_MASK;
@@ -358,9 +396,9 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 
 			// If we have a defined non-control character
 			if (uchar >= 0x20) {
-				if ((derivedMetaState & HC_META_CTRL_ON) != 0)
+				if (isCtrlPressed(derivedMetaState))
 					uchar = keyAsControl(uchar);
-				if ((derivedMetaState & KeyEvent.META_ALT_ON) != 0)
+				if (isAltPressed(derivedMetaState))
 					sendEscape();
 				if (uchar < 0x80)
 					bridge.transport.write(uchar);
@@ -377,7 +415,11 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 				sendEscape();
 				return true;
 			case KeyEvent.KEYCODE_TAB:
-				bridge.transport.write(0x09);
+				if (shiftPressed) {
+					writeXtermCsi("\u001b[Z");
+				} else {
+					bridge.transport.write(0x09);
+				}
 				return true;
 			case KeyEvent.KEYCODE_CAMERA:
 
@@ -412,8 +454,13 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 					selectionArea.decrementColumn();
 					bridge.redraw();
 				} else {
-					((vt320) buffer).keyPressed(vt320.KEY_LEFT, ' ',
-							getStateForBuffer());
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsi(shiftPressed, altPressed, ctrlPressed, 'D');
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_LEFT, ' ', getStateForBuffer());
+					}
 					bridge.tryKeyVibrate();
 				}
 				return true;
@@ -423,8 +470,13 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 					selectionArea.decrementRow();
 					bridge.redraw();
 				} else {
-					((vt320) buffer).keyPressed(vt320.KEY_UP, ' ',
-							getStateForBuffer());
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsi(shiftPressed, altPressed, ctrlPressed, 'A');
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_UP, ' ', getStateForBuffer());
+					}
 					bridge.tryKeyVibrate();
 				}
 				return true;
@@ -434,8 +486,13 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 					selectionArea.incrementRow();
 					bridge.redraw();
 				} else {
-					((vt320) buffer).keyPressed(vt320.KEY_DOWN, ' ',
-							getStateForBuffer());
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsi(shiftPressed, altPressed, ctrlPressed, 'B');
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_DOWN, ' ', getStateForBuffer());
+					}
 					bridge.tryKeyVibrate();
 				}
 				return true;
@@ -445,35 +502,82 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 					selectionArea.incrementColumn();
 					bridge.redraw();
 				} else {
-					((vt320) buffer).keyPressed(vt320.KEY_RIGHT, ' ',
-							getStateForBuffer());
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsi(shiftPressed, altPressed, ctrlPressed, 'C');
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_RIGHT, ' ', getStateForBuffer());
+					}
 					bridge.tryKeyVibrate();
 				}
 				return true;
 
 			case KEYCODE_INSERT:
-				((vt320) buffer).keyPressed(vt320.KEY_INSERT, ' ',
-						getStateForBuffer());
+				{
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsiTilde(shiftPressed, altPressed, ctrlPressed, 2);
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_INSERT, ' ', getStateForBuffer());
+					}
+				}
 				return true;
 			case KEYCODE_FORWARD_DEL:
-				((vt320) buffer).keyPressed(vt320.KEY_DELETE, ' ',
-						getStateForBuffer());
+				{
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsiTilde(shiftPressed, altPressed, ctrlPressed, 3);
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_DELETE, ' ', getStateForBuffer());
+					}
+				}
 				return true;
 			case KEYCODE_MOVE_HOME:
-				((vt320) buffer).keyPressed(vt320.KEY_HOME, ' ',
-						getStateForBuffer());
+				{
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsi(shiftPressed, altPressed, ctrlPressed, 'H');
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_HOME, ' ', getStateForBuffer());
+					}
+				}
 				return true;
 			case KEYCODE_MOVE_END:
-				((vt320) buffer).keyPressed(vt320.KEY_END, ' ',
-						getStateForBuffer());
+				{
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsi(shiftPressed, altPressed, ctrlPressed, 'F');
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_END, ' ', getStateForBuffer());
+					}
+				}
 				return true;
 			case KEYCODE_PAGE_UP:
-				((vt320) buffer).keyPressed(vt320.KEY_PAGE_UP, ' ',
-						getStateForBuffer());
+				{
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsiTilde(shiftPressed, altPressed, ctrlPressed, 5);
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_PAGE_UP, ' ', getStateForBuffer());
+					}
+				}
 				return true;
 			case KEYCODE_PAGE_DOWN:
-				((vt320) buffer).keyPressed(vt320.KEY_PAGE_DOWN, ' ',
-						getStateForBuffer());
+				{
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (ctrlPressed || altPressed || shiftPressed) {
+						writeXtermModifiedCsiTilde(shiftPressed, altPressed, ctrlPressed, 6);
+					} else {
+						((vt320) buffer).keyPressed(vt320.KEY_PAGE_DOWN, ' ', getStateForBuffer());
+					}
+				}
 				return true;
 			}
 
