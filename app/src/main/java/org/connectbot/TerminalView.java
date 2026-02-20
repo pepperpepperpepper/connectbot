@@ -289,15 +289,14 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 	}
 
 	private void updateLayerTypeForCurrentSize() {
-		// When a view is forced into a software layer, Android composites it as a texture in a
-		// hardware-accelerated window. Very large layers (e.g., foldable inner displays) can exceed
-		// GPU/texture limits or become unstable across display/IME transitions, resulting in a black
-		// surface even though the view can render offscreen.
+		// TerminalView historically forced software rendering because some operations were unsupported
+		// on early hardware-accelerated pipelines. On modern devices, forcing a software layer can
+		// cause rendering to go black after resize/IME transitions (even when offscreen rendering
+		// still works).
 		//
-		// Use the default (hardware) pipeline when the view exceeds a conservative threshold.
-		final int w = getWidth();
-		final int h = getHeight();
-		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && (w > 2048 || h > 2048)) {
+		// Prefer the default (hardware) pipeline on Lollipop+ and keep the historical software layer
+		// on older devices.
+		if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
 			setLayerType(View.LAYER_TYPE_NONE, null);
 		} else {
 			setLayerType(View.LAYER_TYPE_SOFTWARE, null);
