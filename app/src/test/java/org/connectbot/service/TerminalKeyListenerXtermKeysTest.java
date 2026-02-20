@@ -24,6 +24,7 @@ import org.connectbot.bean.HostBean;
 import org.connectbot.mock.NullTransport;
 import org.connectbot.util.HostDatabase;
 import org.connectbot.util.PubkeyDatabase;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
@@ -88,6 +89,11 @@ public class TerminalKeyListenerXtermKeysTest {
 		return host;
 	}
 
+	@Before
+	public void resetGlobalHardwareCtrlState() {
+		TerminalKeyListener.resetGlobalHardwareCtrlDown();
+	}
+
 	@Test
 	public void ctrlLeftArrowSendsXtermModifiedSequence() throws IOException {
 		TerminalManager manager = Robolectric.buildService(TestTerminalManager.class).create().get();
@@ -123,6 +129,28 @@ public class TerminalKeyListenerXtermKeysTest {
 		keyListener.onKey(
 				v,
 				KeyEvent.KEYCODE_CTRL_LEFT,
+				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0));
+		keyListener.onKey(
+				v,
+				KeyEvent.KEYCODE_DPAD_LEFT,
+				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, 0, 0));
+
+		assertEquals("\u001b[1;5D", transport.drainUtf8());
+	}
+
+	@Test
+	public void ctrlLeftArrowUsesGlobalCtrlStateWhenCtrlKeyEventIsNotDeliveredToListener() throws IOException {
+		TerminalManager manager = Robolectric.buildService(TestTerminalManager.class).create().get();
+		HostBean host = createHost();
+		TerminalBridge bridge = new TerminalBridge(manager, host);
+
+		RecordingTransport transport = new RecordingTransport(host, bridge, manager);
+		bridge.transport = transport;
+
+		TerminalKeyListener keyListener = bridge.getKeyHandler();
+		View v = new View(ApplicationProvider.getApplicationContext());
+
+		TerminalKeyListener.updateGlobalHardwareCtrlDownFromKeyEvent(
 				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0));
 		keyListener.onKey(
 				v,

@@ -24,6 +24,7 @@ import org.connectbot.util.PreferenceConstants;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.content.res.Configuration;
+import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import android.text.ClipboardManager;
 import android.util.Log;
@@ -102,6 +103,38 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 	// non-printable keys (like DPAD arrows), but they do send separate ctrl key events.
 	// Track ctrl down/up so Ctrl+Arrow can still emit xterm-modified key sequences.
 	private boolean hardwareCtrlDown = false;
+
+	// Some environments deliver KEYCODE_CTRL events to the Activity but not to our focused View
+	// (or deliver them inconsistently). Track a global ctrl-down state that can be updated from
+	// ConsoleActivity.dispatchKeyEvent() as a best-effort fallback for Ctrl+Arrow and similar keys.
+	private static volatile boolean globalHardwareCtrlDown = false;
+	private static volatile long globalHardwareCtrlLastUpdateUptimeMillis = -1L;
+	private static final long GLOBAL_HARDWARE_CTRL_STUCK_TIMEOUT_MILLIS = 2 * 60_000L;
+
+	public static void updateGlobalHardwareCtrlDownFromKeyEvent(KeyEvent event) {
+		globalHardwareCtrlDown = (event.getAction() == KeyEvent.ACTION_DOWN);
+		globalHardwareCtrlLastUpdateUptimeMillis = SystemClock.uptimeMillis();
+	}
+
+	public static void resetGlobalHardwareCtrlDown() {
+		globalHardwareCtrlDown = false;
+		globalHardwareCtrlLastUpdateUptimeMillis = -1L;
+	}
+
+	private static boolean isGlobalHardwareCtrlDownActive() {
+		if (!globalHardwareCtrlDown) {
+			return false;
+		}
+		final long lastUpdate = globalHardwareCtrlLastUpdateUptimeMillis;
+		if (lastUpdate < 0L) {
+			return false;
+		}
+		if (SystemClock.uptimeMillis() - lastUpdate > GLOBAL_HARDWARE_CTRL_STUCK_TIMEOUT_MILLIS) {
+			globalHardwareCtrlDown = false;
+			return false;
+		}
+		return true;
+	}
 
 	// TODO add support for the new API.
 	private ClipboardManager clipboard = null;
@@ -190,6 +223,7 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			// Track hardware ctrl down/up before the ACTION_UP early-return.
 			if (keyCode == KEYCODE_CTRL_LEFT || keyCode == KEYCODE_CTRL_RIGHT) {
 				hardwareCtrlDown = (event.getAction() == KeyEvent.ACTION_DOWN);
+				updateGlobalHardwareCtrlDownFromKeyEvent(event);
 				return true;
 			}
 
@@ -329,7 +363,7 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 				derivedMetaState |= KeyEvent.META_ALT_ON;
 			if ((ourMetaState & OUR_CTRL_MASK) != 0)
 				derivedMetaState |= HC_META_CTRL_ON;
-			if (hardwareCtrlDown)
+			if (hardwareCtrlDown || isGlobalHardwareCtrlDownActive())
 				derivedMetaState |= HC_META_CTRL_ON;
 
 			final boolean shiftPressed = isShiftPressed(derivedMetaState);

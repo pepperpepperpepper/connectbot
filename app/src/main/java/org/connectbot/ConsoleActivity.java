@@ -690,6 +690,15 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	}
 
 	@Override
+	public boolean dispatchKeyEvent(KeyEvent event) {
+		final int keyCode = event.getKeyCode();
+		if (keyCode == KeyEvent.KEYCODE_CTRL_LEFT || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT) {
+			TerminalKeyListener.updateGlobalHardwareCtrlDownFromKeyEvent(event);
+		}
+		return super.dispatchKeyEvent(event);
+	}
+
+	@Override
 	public void onCreate(Bundle icicle) {
 		super.onCreate(icicle);
 
@@ -1247,6 +1256,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	public void onPause() {
 		super.onPause();
 		Log.d(TAG, "onPause called");
+		TerminalKeyListener.resetGlobalHardwareCtrlDown();
 
 		if (forcedOrientation && bound != null) {
 			bound.setResizeAllowed(false);
