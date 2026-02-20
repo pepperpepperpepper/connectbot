@@ -156,6 +156,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private int lastSmallestScreenWidthDp = -1;
 	private int lastScreenLayout = -1;
 	private long lastDisplayResizeUptimeMillis = 0L;
+	private long lastPagerHardResetForDisplayResizeUptimeMillis = 0L;
 
 	@Nullable private ActionBar actionBar;
 	private boolean inActionBarMenu = false;
@@ -226,6 +227,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			return;
 		}
 
+		maybeHardResetPagerAfterDisplayResize();
 		ensurePagerPopulated();
 		updateEmptyVisible();
 		if (adapter.getCount() <= 0) {
@@ -289,6 +291,34 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			return false;
 		}
 		return (SystemClock.uptimeMillis() - lastDisplayResizeUptimeMillis) < DISPLAY_RESIZE_RECOVERY_WINDOW_MILLIS;
+	}
+
+	private void maybeHardResetPagerAfterDisplayResize() {
+		if (!hasRecentDisplayResize()) {
+			return;
+		}
+		if (lastPagerHardResetForDisplayResizeUptimeMillis == lastDisplayResizeUptimeMillis) {
+			return;
+		}
+		if (pager == null || adapter == null) {
+			return;
+		}
+
+		final int count = adapter.getCount();
+		if (count <= 0) {
+			return;
+		}
+		if (pager.getWidth() <= 0 || pager.getHeight() <= 0) {
+			return;
+		}
+
+		lastPagerHardResetForDisplayResizeUptimeMillis = lastDisplayResizeUptimeMillis;
+
+		final int current = Math.min(Math.max(0, pager.getCurrentItem()), count - 1);
+		pager.setAdapter(null);
+		pager.setAdapter(adapter);
+		pager.setCurrentItem(current, false);
+		pager.requestLayout();
 	}
 
 	private void ensurePagerPopulated() {
