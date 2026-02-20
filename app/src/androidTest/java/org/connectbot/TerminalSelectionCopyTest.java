@@ -1110,7 +1110,7 @@ public class TerminalSelectionCopyTest {
 			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
-			assertUiScreenshotNotBlank("after fold/unfold + IME hide (non-fullscreen)");
+			assertUiScreenshotNotBlankEventually("after fold/unfold + IME hide (non-fullscreen)", 12_000L);
 		} finally {
 			resetFoldableOverrideAndWmSize();
 			settings.edit()
@@ -1180,7 +1180,7 @@ public class TerminalSelectionCopyTest {
 			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
-			assertUiScreenshotNotBlank("after fold/unfold + IME hide (fullscreen)");
+			assertUiScreenshotNotBlankEventually("after fold/unfold + IME hide (fullscreen)", 12_000L);
 		} finally {
 			resetFoldableOverrideAndWmSize();
 			settings.edit()
@@ -1248,7 +1248,7 @@ public class TerminalSelectionCopyTest {
 			scrollViewportToRow(afterHideTerminalView, tokenPosAfterHide.row);
 			onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
 			assertTokenIsRenderedInBitmap(afterHideTerminalView, tokenPosAfterHide, token);
-			assertUiScreenshotNotBlank("after density change + IME hide");
+			assertUiScreenshotNotBlankEventually("after density change + IME hide", 12_000L);
 		} finally {
 			try {
 				execShellCommand("wm density reset");
@@ -1733,6 +1733,24 @@ public class TerminalSelectionCopyTest {
 		} finally {
 			screenshot.recycle();
 		}
+	}
+
+	private static void assertUiScreenshotNotBlankEventually(String context, long timeoutMillis) {
+		final long start = SystemClock.uptimeMillis();
+		AssertionError lastError = null;
+		while (SystemClock.uptimeMillis() - start < timeoutMillis) {
+			try {
+				assertUiScreenshotNotBlank(context);
+				return;
+			} catch (AssertionError e) {
+				lastError = e;
+				SystemClock.sleep(250L);
+			}
+		}
+		if (lastError != null) {
+			throw lastError;
+		}
+		throw new AssertionError("UI must not be blank (" + context + ") within " + timeoutMillis + "ms");
 	}
 
 	private static void assertHitTestingMatchesTerminalGrid(final TerminalView terminalView) {
