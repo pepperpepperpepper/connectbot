@@ -98,6 +98,11 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 
 	private int mDeadKey = 0;
 
+	// Hardware modifier tracking: some keyboards do not include ctrl meta-state on
+	// non-printable keys (like DPAD arrows), but they do send separate ctrl key events.
+	// Track ctrl down/up so Ctrl+Arrow can still emit xterm-modified key sequences.
+	private boolean hardwareCtrlDown = false;
+
 	// TODO add support for the new API.
 	private ClipboardManager clipboard = null;
 
@@ -181,6 +186,12 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 					interpretAsHardKeyboard;
 			final boolean controlNumbersAreFKeys = controlNumbersAreFKeysOnSoftKeyboard &&
 					!interpretAsHardKeyboard;
+
+			// Track hardware ctrl down/up before the ACTION_UP early-return.
+			if (keyCode == KEYCODE_CTRL_LEFT || keyCode == KEYCODE_CTRL_RIGHT) {
+				hardwareCtrlDown = (event.getAction() == KeyEvent.ACTION_DOWN);
+				return true;
+			}
 
 			// Ignore all key-up events except for the special keys
 			if (event.getAction() == KeyEvent.ACTION_UP) {
@@ -317,6 +328,8 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			if ((ourMetaState & OUR_ALT_MASK) != 0)
 				derivedMetaState |= KeyEvent.META_ALT_ON;
 			if ((ourMetaState & OUR_CTRL_MASK) != 0)
+				derivedMetaState |= HC_META_CTRL_ON;
+			if (hardwareCtrlDown)
 				derivedMetaState |= HC_META_CTRL_ON;
 
 			final boolean shiftPressed = isShiftPressed(derivedMetaState);
