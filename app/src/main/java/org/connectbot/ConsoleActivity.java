@@ -865,7 +865,6 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 						InputMethodManager.SHOW_FORCED, 0);
 					terminal.requestFocus();
 					hideEmulatedKeys();
-					applyFullscreenFlagFromPreferences();
 
 						// Some devices don't reliably report IME visibility changes via getWindowVisibleDisplayFrame
 						// during fold/unfold transitions. Always queue a pager sanity check after the user taps
