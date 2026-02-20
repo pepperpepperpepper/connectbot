@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.32` (`10914033`) to afteroid/F-Droid repo (Feb 20, 2026).
+- Published **google** flavor `1.9.13.33` (`10914034`) to afteroid/F-Droid repo (Feb 20, 2026).
 - Known-bad historical build: `1.9.13.31` (`10914032`) crashed at startup on Android 14+ because a dynamic receiver was registered without `RECEIVER_EXPORTED`/`RECEIVER_NOT_EXPORTED` (do not republish).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
@@ -377,7 +377,9 @@ Capture:
 ### Troubleshooting (Ctrl+Left doesn’t skip a word)
 
 - ConnectBot should emit `ESC[1;5D` / `ESC[1;5C` for Ctrl+Left/Ctrl+Right (xterm-style).
-- If `cat -v` shows `^[[D` (plain Left Arrow) even when holding Ctrl, it can be an Android keyboard meta-state quirk: some devices set only `META_CTRL_LEFT_ON`/`META_CTRL_RIGHT_ON` (not `META_CTRL_ON`). termlib now treats the full left/right ctrl meta masks as “Ctrl held” so Ctrl+arrows emit the correct xterm sequences.
+- If `cat -v` shows `^[[D` (plain Left Arrow) even when holding Ctrl, ConnectBot is not seeing Ctrl for that key. Common causes:
+  - Android meta-state quirks (some devices set only `META_CTRL_LEFT_ON`/`META_CTRL_RIGHT_ON`, not `META_CTRL_ON`).
+  - Keyboard quirks: some keyboards send separate `KEYCODE_CTRL_LEFT/RIGHT` down/up events but omit Ctrl meta-state on non-printable keys (arrows). Mitigation: track hardware Ctrl held state so Ctrl+arrows still emit xterm sequences.
 - If the remote shell doesn’t move by word, it’s usually a **readline keybinding** issue on the remote host (or inside tmux). Quick checks:
   - In the remote shell, run `cat -v`, press Ctrl+Left, and confirm you see `^[[1;5D`.
   - Add to remote `~/.inputrc` (bash/readline):
