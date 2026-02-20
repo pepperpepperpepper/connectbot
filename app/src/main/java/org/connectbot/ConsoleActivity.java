@@ -536,21 +536,29 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			handler.sendTab();
 			hideKeys = true;
 		} else if (id == R.id.button_up) {
-			handler.sendPressedKey(vt320.KEY_UP);
+			handler.onKey(terminal, KeyEvent.KEYCODE_DPAD_UP,
+					new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_UP));
 		} else if (id == R.id.button_down) {
-			handler.sendPressedKey(vt320.KEY_DOWN);
+			handler.onKey(terminal, KeyEvent.KEYCODE_DPAD_DOWN,
+					new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_DOWN));
 		} else if (id == R.id.button_left) {
-			handler.sendPressedKey(vt320.KEY_LEFT);
+			handler.onKey(terminal, KeyEvent.KEYCODE_DPAD_LEFT,
+					new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT));
 		} else if (id == R.id.button_right) {
-			handler.sendPressedKey(vt320.KEY_RIGHT);
+			handler.onKey(terminal, KeyEvent.KEYCODE_DPAD_RIGHT,
+					new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT));
 		} else if (id == R.id.button_home) {
-			handler.sendPressedKey(vt320.KEY_HOME);
+			handler.onKey(terminal, KeyEvent.KEYCODE_MOVE_HOME,
+					new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MOVE_HOME));
 		} else if (id == R.id.button_end) {
-			handler.sendPressedKey(vt320.KEY_END);
+			handler.onKey(terminal, KeyEvent.KEYCODE_MOVE_END,
+					new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MOVE_END));
 		} else if (id == R.id.button_pgup) {
-			handler.sendPressedKey(vt320.KEY_PAGE_UP);
+			handler.onKey(terminal, KeyEvent.KEYCODE_PAGE_UP,
+					new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAGE_UP));
 		} else if (id == R.id.button_pgdn) {
-			handler.sendPressedKey(vt320.KEY_PAGE_DOWN);
+			handler.onKey(terminal, KeyEvent.KEYCODE_PAGE_DOWN,
+					new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_PAGE_DOWN));
 		} else if (id == R.id.button_f1) {
 			handler.sendPressedKey(vt320.KEY_F1);
 		} else if (id == R.id.button_f2) {
