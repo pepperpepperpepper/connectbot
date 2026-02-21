@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.34` (`10914035`) to afteroid/F-Droid repo (Feb 20, 2026).
+- Published **google** flavor `1.9.13.35` (`10914036`) to afteroid/F-Droid repo (Feb 21, 2026).
 - Known-bad historical build: `1.9.13.31` (`10914032`) crashed at startup on Android 14+ because a dynamic receiver was registered without `RECEIVER_EXPORTED`/`RECEIVER_NOT_EXPORTED` (do not republish).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
@@ -207,11 +207,12 @@ Capture:
   - *Keyboard* Ctrl + *keyboard* arrows => `^[[D` ❌ (no Ctrl modifier reaching the arrow key handler)
   - Yet *keyboard* Ctrl + letters works (e.g., Ctrl-A/Ctrl-E readline navigation), suggesting the IME/Android input pipeline may be inconsistent for Ctrl meta on non-printable keys.
 
-- Fix attempt (pending publish as next `1.9.13.35`):
+- Fix (published as `1.9.13.35` / `10914036`, Feb 21, 2026):
   - Track global hardware Ctrl-down at the Activity level (`ConsoleActivity.dispatchKeyEvent`) and feed it into `TerminalKeyListener` as a fallback when Ctrl meta is missing on DPAD keys.
   - Add a 2-minute “stuck Ctrl” safety timeout and reset global Ctrl state on `ConsoleActivity.onPause()`.
   - Unit coverage: `TerminalKeyListenerXtermKeysTest#ctrlLeftArrowUsesGlobalCtrlStateWhenCtrlKeyEventIsNotDeliveredToListener`.
-- Published in: `1.9.13.17` (`10914018`) (Feb 16, 2026).
+  - If the Ctrl key comes from a **soft keyboard** (flagged `FLAG_SOFT_KEYBOARD`) and is sent as an immediate down+up one-shot, treat it like ConnectBot’s on-screen Ctrl (transient `metaPress`) so Ctrl+Arrow still emits xterm-modified sequences.
+  - Unit coverage: `TerminalKeyListenerXtermKeysTest#softCtrlTapThenLeftArrowSendsXtermModifiedSequenceWhenCtrlMetaStateIsMissing`.
 
 - Follow-up user report (foldables): after unfolding, hiding the keyboard could result in a **blank black console** (sessions still exist but `ViewPager` has no child views rendered).
 - Fix (v1.9.13 build):
