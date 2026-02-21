@@ -28,6 +28,7 @@ import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import android.text.ClipboardManager;
 import android.util.Log;
+import android.view.InputDevice;
 import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.View;
@@ -111,14 +112,51 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 	private static volatile long globalHardwareCtrlLastUpdateUptimeMillis = -1L;
 	private static final long GLOBAL_HARDWARE_CTRL_STUCK_TIMEOUT_MILLIS = 2 * 60_000L;
 
+	// Soft keyboard Ctrl is often delivered as a "one-shot" press (down+up) and some IMEs omit
+	// ctrl meta-state on non-printable keys (like DPAD arrows). Track a global one-shot Ctrl
+	// state so Ctrl+Arrow can still emit xterm-modified sequences even after Ctrl has been released.
+	private static volatile boolean globalCtrlOneShotActive = false;
+	private static volatile long globalCtrlOneShotLastUpdateUptimeMillis = -1L;
+	private static final long GLOBAL_CTRL_ONE_SHOT_TIMEOUT_MILLIS = 10_000L;
+
+	private static boolean isLikelyVirtualOrSoftKeyboardKeyEvent(KeyEvent event) {
+		if ((event.getFlags() & KeyEvent.FLAG_SOFT_KEYBOARD) != 0) {
+			return true;
+		}
+		if ((event.getFlags() & KeyEvent.FLAG_VIRTUAL_HARD_KEY) != 0) {
+			return true;
+		}
+
+		final int deviceId = event.getDeviceId();
+		if (deviceId == KeyCharacterMap.VIRTUAL_KEYBOARD) {
+			return true;
+		}
+
+		final InputDevice device = InputDevice.getDevice(deviceId);
+		if (device == null) {
+			return true;
+		}
+		return device.isVirtual();
+	}
+
 	public static void updateGlobalHardwareCtrlDownFromKeyEvent(KeyEvent event) {
 		globalHardwareCtrlDown = (event.getAction() == KeyEvent.ACTION_DOWN);
-		globalHardwareCtrlLastUpdateUptimeMillis = SystemClock.uptimeMillis();
+		final long now = SystemClock.uptimeMillis();
+		globalHardwareCtrlLastUpdateUptimeMillis = now;
+
+		if (event.getAction() == KeyEvent.ACTION_DOWN
+				&& event.getRepeatCount() == 0
+				&& isLikelyVirtualOrSoftKeyboardKeyEvent(event)) {
+			globalCtrlOneShotActive = true;
+			globalCtrlOneShotLastUpdateUptimeMillis = now;
+		}
 	}
 
 	public static void resetGlobalHardwareCtrlDown() {
 		globalHardwareCtrlDown = false;
 		globalHardwareCtrlLastUpdateUptimeMillis = -1L;
+		globalCtrlOneShotActive = false;
+		globalCtrlOneShotLastUpdateUptimeMillis = -1L;
 	}
 
 	private static boolean isGlobalHardwareCtrlDownActive() {
@@ -134,6 +172,36 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			return false;
 		}
 		return true;
+	}
+
+	private static boolean consumeGlobalCtrlOneShotIfActive() {
+		if (!globalCtrlOneShotActive) {
+			return false;
+		}
+		final long lastUpdate = globalCtrlOneShotLastUpdateUptimeMillis;
+		if (lastUpdate < 0L) {
+			globalCtrlOneShotActive = false;
+			return false;
+		}
+		if (SystemClock.uptimeMillis() - lastUpdate > GLOBAL_CTRL_ONE_SHOT_TIMEOUT_MILLIS) {
+			globalCtrlOneShotActive = false;
+			return false;
+		}
+		globalCtrlOneShotActive = false;
+		return true;
+	}
+
+	private static boolean consumeGlobalCtrlOneShotIfActiveForKeyEvent(int keyCode, KeyEvent event) {
+		if (keyCode == KEYCODE_CTRL_LEFT || keyCode == KEYCODE_CTRL_RIGHT) {
+			return false;
+		}
+		if (event.getAction() != KeyEvent.ACTION_DOWN) {
+			return false;
+		}
+		if (event.getRepeatCount() != 0) {
+			return false;
+		}
+		return consumeGlobalCtrlOneShotIfActive();
 	}
 
 	// TODO add support for the new API.
@@ -222,20 +290,19 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 
 			// Track hardware ctrl down/up before the ACTION_UP early-return.
 			if (keyCode == KEYCODE_CTRL_LEFT || keyCode == KEYCODE_CTRL_RIGHT) {
-				final boolean fromSoftKeyboard =
-						(event.getFlags() & KeyEvent.FLAG_SOFT_KEYBOARD) != 0;
-				if (fromSoftKeyboard && event.getAction() == KeyEvent.ACTION_DOWN
+				hardwareCtrlDown = (event.getAction() == KeyEvent.ACTION_DOWN);
+				updateGlobalHardwareCtrlDownFromKeyEvent(event);
+
+				if (isLikelyVirtualOrSoftKeyboardKeyEvent(event)
+						&& event.getAction() == KeyEvent.ACTION_DOWN
 						&& event.getRepeatCount() == 0) {
 					// Some soft keyboards send CTRL as an immediate down+up "one-shot" key without
 					// reliably setting ctrl meta-state on non-printable keys (like DPAD arrows).
-					// Treat soft CTRL key events as a transient modifier (like our on-screen CTRL)
-					// so CTRL+Arrow can still emit xterm-modified sequences.
+					// Treat these CTRL key events as a transient modifier (like our on-screen CTRL)
+					// so Ctrl+Arrow can still emit xterm-modified sequences.
 					metaPress(OUR_CTRL_ON, true);
-					return true;
 				}
 
-				hardwareCtrlDown = (event.getAction() == KeyEvent.ACTION_DOWN);
-				updateGlobalHardwareCtrlDownFromKeyEvent(event);
 				return true;
 			}
 
@@ -376,6 +443,11 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			if ((ourMetaState & OUR_CTRL_MASK) != 0)
 				derivedMetaState |= HC_META_CTRL_ON;
 			if (hardwareCtrlDown || isGlobalHardwareCtrlDownActive())
+				derivedMetaState |= HC_META_CTRL_ON;
+
+			final boolean consumedGlobalCtrlOneShot =
+					consumeGlobalCtrlOneShotIfActiveForKeyEvent(keyCode, event);
+			if (consumedGlobalCtrlOneShot && !isCtrlPressed(derivedMetaState))
 				derivedMetaState |= HC_META_CTRL_ON;
 
 			final boolean shiftPressed = isShiftPressed(derivedMetaState);

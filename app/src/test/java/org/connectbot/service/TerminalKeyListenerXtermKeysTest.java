@@ -30,6 +30,7 @@ import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
 
 import android.preference.PreferenceManager;
+import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.View;
 import androidx.test.core.app.ApplicationProvider;
@@ -181,6 +182,32 @@ public class TerminalKeyListenerXtermKeysTest {
 				v,
 				KeyEvent.KEYCODE_CTRL_LEFT,
 				new KeyEvent(0, 0, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, 0, 0, softFlags, 0));
+		keyListener.onKey(
+				v,
+				KeyEvent.KEYCODE_DPAD_LEFT,
+				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, 0, 0));
+
+		assertEquals("\u001b[1;5D", transport.drainUtf8());
+	}
+
+	@Test
+	public void ctrlTapUsesGlobalOneShotWhenCtrlKeyEventIsNotDeliveredToListener() throws IOException {
+		TerminalManager manager = Robolectric.buildService(TestTerminalManager.class).create().get();
+		HostBean host = createHost();
+		TerminalBridge bridge = new TerminalBridge(manager, host);
+
+		RecordingTransport transport = new RecordingTransport(host, bridge, manager);
+		bridge.transport = transport;
+
+		TerminalKeyListener keyListener = bridge.getKeyHandler();
+		View v = new View(ApplicationProvider.getApplicationContext());
+
+		final int deviceId = KeyCharacterMap.VIRTUAL_KEYBOARD;
+		TerminalKeyListener.updateGlobalHardwareCtrlDownFromKeyEvent(
+				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, deviceId, 0, 0, 0));
+		TerminalKeyListener.updateGlobalHardwareCtrlDownFromKeyEvent(
+				new KeyEvent(0, 0, KeyEvent.ACTION_UP, KeyEvent.KEYCODE_CTRL_LEFT, 0, 0, deviceId, 0, 0, 0));
+
 		keyListener.onKey(
 				v,
 				KeyEvent.KEYCODE_DPAD_LEFT,
