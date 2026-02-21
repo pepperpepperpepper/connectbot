@@ -52,7 +52,7 @@ public class HostDatabase extends RobustSQLiteOpenHelper implements HostStorage,
 	public final static String TAG = "CB.HostDatabase";
 
 	public final static String DB_NAME = "hosts";
-	public final static int DB_VERSION = 26;
+	public final static int DB_VERSION = 27;
 
 	public final static String TABLE_HOSTS = "hosts";
 	public final static String FIELD_HOST_NICKNAME = "nickname";
@@ -65,6 +65,7 @@ public class HostDatabase extends RobustSQLiteOpenHelper implements HostStorage,
 	public final static String FIELD_HOST_USEKEYS = "usekeys";
 	public final static String FIELD_HOST_USEAUTHAGENT = "useauthagent";
 	public final static String FIELD_HOST_POSTLOGIN = "postlogin";
+	public final static String FIELD_HOST_POSTLOGIN_ENTER = "postloginenter";
 	public final static String FIELD_HOST_PUBKEYID = "pubkeyid";
 	public final static String FIELD_HOST_WANTSESSION = "wantsession";
 	public final static String FIELD_HOST_DELKEY = "delkey";
@@ -135,6 +136,7 @@ public class HostDatabase extends RobustSQLiteOpenHelper implements HostStorage,
 			+ FIELD_HOST_USEKEYS + " TEXT, "
 			+ FIELD_HOST_USEAUTHAGENT + " TEXT, "
 			+ FIELD_HOST_POSTLOGIN + " TEXT, "
+			+ FIELD_HOST_POSTLOGIN_ENTER + " TEXT DEFAULT '" + false + "', "
 			+ FIELD_HOST_PUBKEYID + " INTEGER DEFAULT " + PUBKEYID_ANY + ", "
 			+ FIELD_HOST_DELKEY + " TEXT DEFAULT '" + DELKEY_DEL + "', "
 			+ FIELD_HOST_FONTSIZE + " INTEGER, "
@@ -389,7 +391,26 @@ public class HostDatabase extends RobustSQLiteOpenHelper implements HostStorage,
 			// Work around SQLite not supporting dropping columns
 			db.execSQL("DROP TABLE IF EXISTS " + TABLE_HOSTS + "_upgrade");
 			db.execSQL("CREATE TABLE " + TABLE_HOSTS + "_upgrade (" + TABLE_HOSTS_COLUMNS + ")");
-			db.execSQL("INSERT INTO " + TABLE_HOSTS + "_upgrade SELECT _id, "
+			db.execSQL("INSERT INTO " + TABLE_HOSTS + "_upgrade (_id, "
+					+ FIELD_HOST_NICKNAME + ", "
+					+ FIELD_HOST_PROTOCOL + ", "
+					+ FIELD_HOST_USERNAME + ", "
+					+ FIELD_HOST_HOSTNAME + ", "
+					+ FIELD_HOST_PORT + ", "
+					+ FIELD_HOST_LASTCONNECT + ", "
+					+ FIELD_HOST_COLOR + ", "
+					+ FIELD_HOST_USEKEYS + ", "
+					+ FIELD_HOST_USEAUTHAGENT + ", "
+					+ FIELD_HOST_POSTLOGIN + ", "
+					+ FIELD_HOST_PUBKEYID + ", "
+					+ FIELD_HOST_DELKEY + ", "
+					+ FIELD_HOST_FONTSIZE + ", "
+					+ FIELD_HOST_WANTSESSION + ", "
+					+ FIELD_HOST_COMPRESSION + ", "
+					+ FIELD_HOST_ENCODING + ", "
+					+ FIELD_HOST_STAYCONNECTED + ", "
+					+ FIELD_HOST_QUICKDISCONNECT
+					+ ") SELECT _id, "
 					+ FIELD_HOST_NICKNAME + ", "
 					+ FIELD_HOST_PROTOCOL + ", "
 					+ FIELD_HOST_USERNAME + ", "
@@ -471,6 +492,10 @@ public class HostDatabase extends RobustSQLiteOpenHelper implements HostStorage,
 				// Re-enable foreign keys (will be automatically enabled on next connection via onConfigure)
 				db.execSQL("PRAGMA foreign_keys = ON");
 			}
+			// fall through
+		case 26:
+			db.execSQL("ALTER TABLE " + TABLE_HOSTS
+					+ " ADD COLUMN " + FIELD_HOST_POSTLOGIN_ENTER + " TEXT DEFAULT '" + false + "'");
 		}
 	}
 
@@ -575,6 +600,7 @@ public class HostDatabase extends RobustSQLiteOpenHelper implements HostStorage,
 			COL_USEKEYS = c.getColumnIndexOrThrow(FIELD_HOST_USEKEYS),
 			COL_USEAUTHAGENT = c.getColumnIndexOrThrow(FIELD_HOST_USEAUTHAGENT),
 			COL_POSTLOGIN = c.getColumnIndexOrThrow(FIELD_HOST_POSTLOGIN),
+			COL_POSTLOGIN_ENTER = c.getColumnIndexOrThrow(FIELD_HOST_POSTLOGIN_ENTER),
 			COL_PUBKEYID = c.getColumnIndexOrThrow(FIELD_HOST_PUBKEYID),
 			COL_WANTSESSION = c.getColumnIndexOrThrow(FIELD_HOST_WANTSESSION),
 			COL_DELKEY = c.getColumnIndexOrThrow(FIELD_HOST_DELKEY),
@@ -598,6 +624,7 @@ public class HostDatabase extends RobustSQLiteOpenHelper implements HostStorage,
 			host.setUseKeys(Boolean.parseBoolean(c.getString(COL_USEKEYS)));
 			host.setUseAuthAgent(c.getString(COL_USEAUTHAGENT));
 			host.setPostLogin(c.getString(COL_POSTLOGIN));
+			host.setPostLoginEnter(Boolean.parseBoolean(c.getString(COL_POSTLOGIN_ENTER)));
 			host.setPubkeyId(c.getLong(COL_PUBKEYID));
 			host.setWantSession(Boolean.parseBoolean(c.getString(COL_WANTSESSION)));
 			host.setDelKey(c.getString(COL_DELKEY));

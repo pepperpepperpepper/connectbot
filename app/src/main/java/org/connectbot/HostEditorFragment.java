@@ -126,6 +126,7 @@ public class HostEditorFragment extends Fragment {
 	private CheckableMenuItem mStayConnectedSwitch;
 	private CheckableMenuItem mCloseOnDisconnectSwitch;
 	private EditText mPostLoginAutomationField;
+	private CheckableMenuItem mPostLoginSendEnterSwitch;
 	private HostTextFieldWatcher mFontSizeTextChangeListener;
 
 	public static HostEditorFragment newInstance(
@@ -477,6 +478,17 @@ public class HostEditorFragment extends Fragment {
 		mPostLoginAutomationField.setText(mHost.getPostLogin());
 		mPostLoginAutomationField.addTextChangedListener(
 				new HostTextFieldWatcher(HostDatabase.FIELD_HOST_POSTLOGIN));
+
+		mPostLoginSendEnterSwitch = view.findViewById(R.id.postlogin_send_enter_item);
+		mPostLoginSendEnterSwitch.setChecked(mHost.getPostLoginEnter());
+		mPostLoginSendEnterSwitch.setOnCheckedChangeListener(
+				new CompoundButton.OnCheckedChangeListener() {
+					@Override
+					public void onCheckedChanged(CompoundButton buttonView, boolean isChecked) {
+						mHost.setPostLoginEnter(isChecked);
+						handleHostChange();
+					}
+				});
 
 		setUriPartsContainerExpanded(mIsUriEditorExpanded);
 

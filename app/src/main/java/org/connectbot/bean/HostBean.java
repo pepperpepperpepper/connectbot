@@ -48,6 +48,7 @@ public class HostBean extends AbstractBean {
 	private boolean useKeys = true;
 	private String useAuthAgent = HostDatabase.AUTHAGENT_NO;
 	private String postLogin = null;
+	private boolean postLoginEnter = false;
 	private long pubkeyId = HostDatabase.PUBKEYID_ANY;
 	private boolean wantSession = true;
 	private String delKey = HostDatabase.DELKEY_DEL;
@@ -143,6 +144,12 @@ public class HostBean extends AbstractBean {
 	public String getPostLogin() {
 		return postLogin;
 	}
+	public void setPostLoginEnter(boolean postLoginEnter) {
+		this.postLoginEnter = postLoginEnter;
+	}
+	public boolean getPostLoginEnter() {
+		return postLoginEnter;
+	}
 	public void setPubkeyId(long pubkeyId) {
 		this.pubkeyId = pubkeyId;
 	}
@@ -222,6 +229,7 @@ public class HostBean extends AbstractBean {
 		values.put(HostDatabase.FIELD_HOST_USEKEYS, Boolean.toString(useKeys));
 		values.put(HostDatabase.FIELD_HOST_USEAUTHAGENT, useAuthAgent);
 		values.put(HostDatabase.FIELD_HOST_POSTLOGIN, postLogin);
+		values.put(HostDatabase.FIELD_HOST_POSTLOGIN_ENTER, Boolean.toString(postLoginEnter));
 		values.put(HostDatabase.FIELD_HOST_PUBKEYID, pubkeyId);
 		values.put(HostDatabase.FIELD_HOST_WANTSESSION, Boolean.toString(wantSession));
 		values.put(HostDatabase.FIELD_HOST_DELKEY, delKey);
@@ -246,6 +254,7 @@ public class HostBean extends AbstractBean {
 		host.setUseKeys(Boolean.valueOf(values.getAsString(HostDatabase.FIELD_HOST_USEKEYS)));
 		host.setUseAuthAgent(values.getAsString(HostDatabase.FIELD_HOST_USEAUTHAGENT));
 		host.setPostLogin(values.getAsString(HostDatabase.FIELD_HOST_POSTLOGIN));
+		host.setPostLoginEnter(Boolean.valueOf(values.getAsString(HostDatabase.FIELD_HOST_POSTLOGIN_ENTER)));
 		host.setPubkeyId(values.getAsLong(HostDatabase.FIELD_HOST_PUBKEYID));
 		host.setWantSession(Boolean.valueOf(values.getAsString(HostDatabase.FIELD_HOST_WANTSESSION)));
 		host.setDelKey(values.getAsString(HostDatabase.FIELD_HOST_DELKEY));

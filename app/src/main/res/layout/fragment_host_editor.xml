@@ -515,6 +515,15 @@
 
 		</RelativeLayout>
 
+		<org.connectbot.views.CheckableMenuItem
+			android:id="@+id/postlogin_send_enter_item"
+			android:layout_width="match_parent"
+			android:layout_height="wrap_content"
+			android:icon="@drawable/ic_keyboard"
+			android:title="@string/hostpref_postlogin_send_enter_title"
+			app:summary="@string/hostpref_postlogin_send_enter_summary"
+			/>
+
 	</LinearLayout>
 
 </ScrollView>

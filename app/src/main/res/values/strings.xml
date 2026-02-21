@@ -357,6 +357,11 @@
 	<!-- Host post-login automation preference summary -->
 	<string name="hostpref_postlogin_summary">"Commands to run on remote server once authenticated"</string>
 
+	<!-- Whether to send Enter after the post-login automation text -->
+	<string name="hostpref_postlogin_send_enter_title">"Send Enter after post-login automation"</string>
+	<!-- Summary for whether to send Enter after the post-login automation text -->
+	<string name="hostpref_postlogin_send_enter_summary">"Automatically press Enter after sending the post-login automation text"</string>
+
 	<!-- Host compression preference title -->
 	<string name="hostpref_compression_title">"Compression"</string>
 	<!-- Summary for compression preference -->

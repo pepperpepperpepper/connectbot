@@ -434,7 +434,15 @@ public class TerminalBridge implements VDUDisplay {
 		setFontSize(fontSizeDp);
 
 		// finally send any post-login string, if requested
-		injectString(host.getPostLogin());
+		String postLogin = host.getPostLogin();
+		if (postLogin != null && postLogin.length() > 0) {
+			if (host.getPostLoginEnter()
+					&& !postLogin.endsWith("\n")
+					&& !postLogin.endsWith("\r")) {
+				postLogin += "\r";
+			}
+			injectString(postLogin);
+		}
 	}
 
 	/**
