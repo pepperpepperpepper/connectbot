@@ -222,6 +222,18 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 
 			// Track hardware ctrl down/up before the ACTION_UP early-return.
 			if (keyCode == KEYCODE_CTRL_LEFT || keyCode == KEYCODE_CTRL_RIGHT) {
+				final boolean fromSoftKeyboard =
+						(event.getFlags() & KeyEvent.FLAG_SOFT_KEYBOARD) != 0;
+				if (fromSoftKeyboard && event.getAction() == KeyEvent.ACTION_DOWN
+						&& event.getRepeatCount() == 0) {
+					// Some soft keyboards send CTRL as an immediate down+up "one-shot" key without
+					// reliably setting ctrl meta-state on non-printable keys (like DPAD arrows).
+					// Treat soft CTRL key events as a transient modifier (like our on-screen CTRL)
+					// so CTRL+Arrow can still emit xterm-modified sequences.
+					metaPress(OUR_CTRL_ON, true);
+					return true;
+				}
+
 				hardwareCtrlDown = (event.getAction() == KeyEvent.ACTION_DOWN);
 				updateGlobalHardwareCtrlDownFromKeyEvent(event);
 				return true;
