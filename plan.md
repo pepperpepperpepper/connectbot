@@ -56,7 +56,7 @@ Note: `StartupTest` is broad/flaky across some Genymotion profiles; don’t gate
 
 ### Current publish
 
-- Published **google** flavor `1.9.13.35` (`10914036`) to afteroid/F-Droid repo (Feb 21, 2026).
+- Published **google** flavor `1.9.13.36` (`10914037`) to afteroid/F-Droid repo (Feb 21, 2026).
 - Known-bad historical build: `1.9.13.31` (`10914032`) crashed at startup on Android 14+ because a dynamic receiver was registered without `RECEIVER_EXPORTED`/`RECEIVER_NOT_EXPORTED` (do not republish).
 - Known-bad historical build: `1.9.13.4` (`10914005`) regressed “regular” selection (do not republish).
 
@@ -207,12 +207,13 @@ Capture:
   - *Keyboard* Ctrl + *keyboard* arrows => `^[[D` ❌ (no Ctrl modifier reaching the arrow key handler)
   - Yet *keyboard* Ctrl + letters works (e.g., Ctrl-A/Ctrl-E readline navigation), suggesting the IME/Android input pipeline may be inconsistent for Ctrl meta on non-printable keys.
 
-- Fix (published as `1.9.13.35` / `10914036`, Feb 21, 2026):
+- Fix (published as `1.9.13.36` / `10914037`, Feb 21, 2026):
   - Track global hardware Ctrl-down at the Activity level (`ConsoleActivity.dispatchKeyEvent`) and feed it into `TerminalKeyListener` as a fallback when Ctrl meta is missing on DPAD keys.
   - Add a 2-minute “stuck Ctrl” safety timeout and reset global Ctrl state on `ConsoleActivity.onPause()`.
   - Unit coverage: `TerminalKeyListenerXtermKeysTest#ctrlLeftArrowUsesGlobalCtrlStateWhenCtrlKeyEventIsNotDeliveredToListener`.
-  - If the Ctrl key comes from a **soft keyboard** (flagged `FLAG_SOFT_KEYBOARD`) and is sent as an immediate down+up one-shot, treat it like ConnectBot’s on-screen Ctrl (transient `metaPress`) so Ctrl+Arrow still emits xterm-modified sequences.
-  - Unit coverage: `TerminalKeyListenerXtermKeysTest#softCtrlTapThenLeftArrowSendsXtermModifiedSequenceWhenCtrlMetaStateIsMissing`.
+  - Treat **virtual/soft keyboard Ctrl** as a **one-shot** modifier even if the IME omits ctrl meta-state on arrows or fails to mark the event `FLAG_SOFT_KEYBOARD`:
+    - Track a global one-shot Ctrl state set on `KEYCODE_CTRL_*` down and consumed by the next key event.
+    - Unit coverage: `TerminalKeyListenerXtermKeysTest#softCtrlTapThenLeftArrowSendsXtermModifiedSequenceWhenCtrlMetaStateIsMissing` and `#ctrlTapUsesGlobalOneShotWhenCtrlKeyEventIsNotDeliveredToListener`.
 
 - Follow-up user report (foldables): after unfolding, hiding the keyboard could result in a **blank black console** (sessions still exist but `ViewPager` has no child views rendered).
 - Fix (v1.9.13 build):
