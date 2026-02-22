@@ -94,6 +94,13 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private static final String URI_QUERY_CB_COMMAND = "cb_cmd";
 	private static final String URI_QUERY_CB_SEND_ENTER = "cb_enter";
 
+	private static final String URI_QUERY_CB_TMUX_SESSION = "cb_tmux_session";
+	private static final String URI_QUERY_CB_TMUX_WINDOW = "cb_tmux_window";
+	private static final String URI_QUERY_CB_TMUX_PANE = "cb_tmux_pane";
+
+	private static final String URI_QUERY_CB_ZELLIJ_TAB = "cb_zellij_tab";
+	private static final String URI_QUERY_CB_ZELLIJ_PANE = "cb_zellij_pane";
+
 	public static final String EXTRA_CB_COMMAND = "org.connectbot.extra.CB_COMMAND";
 	public static final String EXTRA_CB_SEND_ENTER = "org.connectbot.extra.CB_SEND_ENTER";
 
@@ -476,6 +483,60 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		String command = intent.getStringExtra(EXTRA_CB_COMMAND);
 		boolean sendEnter = intent.getBooleanExtra(EXTRA_CB_SEND_ENTER, false);
 
+		final String tmuxSessionRaw = uri.getQueryParameter(URI_QUERY_CB_TMUX_SESSION);
+		final String tmuxPaneRaw = uri.getQueryParameter(URI_QUERY_CB_TMUX_PANE);
+		final String tmuxWindowRaw = uri.getQueryParameter(URI_QUERY_CB_TMUX_WINDOW);
+		final boolean hasTmuxParams =
+				(tmuxSessionRaw != null && tmuxSessionRaw.length() > 0)
+						|| (tmuxPaneRaw != null && tmuxPaneRaw.length() > 0)
+						|| (tmuxWindowRaw != null && tmuxWindowRaw.length() > 0);
+
+		if (hasTmuxParams) {
+			final String tmuxSession = tmuxSessionRaw == null ? null : tmuxSessionRaw.trim();
+			if (tmuxSession == null || tmuxSession.length() == 0 || !isSafeMuxIdentifier(tmuxSession)) {
+				Log.w(TAG, "Deep link missing/invalid tmux session (cb_tmux_session)");
+				return;
+			}
+
+			final int tmuxPane = parsePositiveIntOrDefault(tmuxPaneRaw, -1);
+			if (tmuxPane < 0) {
+				Log.w(TAG, "Deep link missing/invalid tmux pane (cb_tmux_pane)");
+				return;
+			}
+
+			final int tmuxWindow = parsePositiveIntOrDefault(tmuxWindowRaw, 0);
+			if (tmuxWindow < 0) {
+				Log.w(TAG, "Deep link invalid tmux window (cb_tmux_window)");
+				return;
+			}
+
+			command = buildTmuxJumpKeys(tmuxSession, tmuxWindow, tmuxPane);
+			sendEnter = false; // command already contains any needed keypresses
+		}
+
+		final String zellijTabRaw = uri.getQueryParameter(URI_QUERY_CB_ZELLIJ_TAB);
+		final String zellijPaneRaw = uri.getQueryParameter(URI_QUERY_CB_ZELLIJ_PANE);
+		final boolean hasZellijParams =
+				(zellijTabRaw != null && zellijTabRaw.length() > 0)
+						|| (zellijPaneRaw != null && zellijPaneRaw.length() > 0);
+
+		if (!hasTmuxParams && hasZellijParams) {
+			final int tab = parsePositiveIntOrDefault(zellijTabRaw, -1);
+			if (tab < 1 || tab > 9) {
+				Log.w(TAG, "Deep link missing/invalid zellij tab (cb_zellij_tab must be 1-9)");
+				return;
+			}
+
+			final int paneIndex = parsePositiveIntOrDefault(zellijPaneRaw, 1);
+			if (paneIndex < 1) {
+				Log.w(TAG, "Deep link invalid zellij pane index (cb_zellij_pane)");
+				return;
+			}
+
+			command = buildZellijJumpKeys(tab, paneIndex);
+			sendEnter = false; // command already contains any needed keypresses
+		}
+
 		if (command == null || command.length() == 0) {
 			command = uri.getQueryParameter(URI_QUERY_CB_COMMAND);
 			sendEnter = parseBooleanQueryParam(uri.getQueryParameter(URI_QUERY_CB_SEND_ENTER));
@@ -510,6 +571,74 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			}
 		}
 		setIntent(intent);
+	}
+
+	private static boolean isSafeMuxIdentifier(String value) {
+		if (value == null || value.isEmpty()) {
+			return false;
+		}
+
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
+			if (!(c >= 'a' && c <= 'z')
+					&& !(c >= 'A' && c <= 'Z')
+					&& !(c >= '0' && c <= '9')
+					&& c != '_'
+					&& c != '-'
+					&& c != '.') {
+				return false;
+			}
+		}
+		return true;
+	}
+
+	private static int parsePositiveIntOrDefault(@Nullable String raw, int defaultValue) {
+		if (raw == null) {
+			return defaultValue;
+		}
+		try {
+			return Integer.parseInt(raw.trim());
+		} catch (NumberFormatException e) {
+			return defaultValue;
+		}
+	}
+
+	/**
+	 * Builds a byte sequence that should be interpreted by tmux (not the shell) to focus the given
+	 * session/window/pane. Uses the default tmux prefix (Ctrl-b).
+	 */
+	private static String buildTmuxJumpKeys(String session, int window, int pane) {
+		final char ctrlB = 0x02;
+		return "" + ctrlB + ":" +
+				"switch-client -t " + session +
+				"; select-window -t " + session + ":" + window +
+				"; select-pane -t " + session + ":" + window + "." + pane +
+				"\r";
+	}
+
+	/**
+	 * Builds a byte sequence that should be interpreted by Zellij (not the shell) to focus the
+	 * given tab and (optionally) cycle focus forward to the requested pane index. Assumes Zellij's
+	 * default keybindings (Ctrl-t for tab mode, Ctrl-b for tmux mode, 'o' for focus-next-pane).
+	 */
+	private static String buildZellijJumpKeys(int tab, int paneIndex) {
+		final char ctrlT = 0x14;
+		final char ctrlB = 0x02;
+		final char esc = 0x1b;
+
+		StringBuilder sb = new StringBuilder();
+		sb.append(ctrlT).append(Integer.toString(tab));
+
+		final int focusNextSteps = Math.max(0, paneIndex - 1);
+		if (focusNextSteps > 0) {
+			sb.append(ctrlB);
+			for (int i = 0; i < focusNextSteps; i++) {
+				sb.append('o');
+			}
+			sb.append(esc);
+		}
+
+		return sb.toString();
 	}
 
 	private static boolean parseBooleanQueryParam(@Nullable String raw) {
