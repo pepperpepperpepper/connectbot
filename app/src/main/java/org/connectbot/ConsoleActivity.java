@@ -91,6 +91,12 @@ import de.mud.terminal.vt320;
 public class ConsoleActivity extends AppCompatActivity implements BridgeDisconnectedListener {
 	public final static String TAG = "CB.ConsoleActivity";
 
+	private static final String URI_QUERY_CB_COMMAND = "cb_cmd";
+	private static final String URI_QUERY_CB_SEND_ENTER = "cb_enter";
+
+	public static final String EXTRA_CB_COMMAND = "org.connectbot.extra.CB_COMMAND";
+	public static final String EXTRA_CB_SEND_ENTER = "org.connectbot.extra.CB_SEND_ENTER";
+
 	protected static final int REQUEST_EDIT = 1;
 
 	private static final int KEYBOARD_DISPLAY_TIME = 3000;
@@ -112,6 +118,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	private boolean hardKeyboard = false;
 
 	protected Uri requested;
+	private String lastHandledCommandToken = null;
 
 	protected ClipboardManager clipboard;
 	private RelativeLayout stringPromptGroup;
@@ -441,6 +448,8 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			if (requestedBridge != null)
 				requestedBridge.promptHelper.setListener(promptListener);
 
+			handleDeepLinkCommand(getIntent(), requested, requestedBridge);
+
 			if (requestedIndex != -1) {
 				pager.post(new Runnable() {
 					@Override
@@ -458,6 +467,61 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 			updateEmptyVisible();
 		}
 	};
+
+	private void handleDeepLinkCommand(Intent intent, Uri uri, TerminalBridge bridge) {
+		if (intent == null || uri == null || bridge == null) {
+			return;
+		}
+
+		String command = intent.getStringExtra(EXTRA_CB_COMMAND);
+		boolean sendEnter = intent.getBooleanExtra(EXTRA_CB_SEND_ENTER, false);
+
+		if (command == null || command.length() == 0) {
+			command = uri.getQueryParameter(URI_QUERY_CB_COMMAND);
+			sendEnter = parseBooleanQueryParam(uri.getQueryParameter(URI_QUERY_CB_SEND_ENTER));
+		}
+
+		if (command == null || command.length() == 0) {
+			return;
+		}
+
+		final String token = uri.toString() + "|" + command + "|" + sendEnter;
+		if (token.equals(lastHandledCommandToken)) {
+			return;
+		}
+		lastHandledCommandToken = token;
+
+		if (sendEnter
+				&& !command.endsWith("\n")
+				&& !command.endsWith("\r")) {
+			command += "\r";
+		}
+
+		bridge.injectStringWhenConnected(command);
+
+		// Make it harder to accidentally re-run the command in the same Activity instance.
+		intent.removeExtra(EXTRA_CB_COMMAND);
+		intent.removeExtra(EXTRA_CB_SEND_ENTER);
+		if (uri.getQuery() != null) {
+			Uri cleaned = uri.buildUpon().clearQuery().build();
+			intent.setData(cleaned);
+			if (uri.equals(requested)) {
+				requested = cleaned;
+			}
+		}
+		setIntent(intent);
+	}
+
+	private static boolean parseBooleanQueryParam(@Nullable String raw) {
+		if (raw == null) {
+			return false;
+		}
+		return "1".equals(raw)
+				|| "true".equalsIgnoreCase(raw)
+				|| "yes".equalsIgnoreCase(raw)
+				|| "y".equalsIgnoreCase(raw)
+				|| "on".equalsIgnoreCase(raw);
+	}
 
 	// someone below us requested to display a prompt
 	protected PromptHelper.PromptListener promptListener = this::updatePromptVisible;
@@ -1350,6 +1414,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 	@Override
 	protected void onNewIntent(Intent intent) {
 		super.onNewIntent(intent);
+		setIntent(intent);
 
 		Log.d(TAG, "onNewIntent called");
 
@@ -1375,7 +1440,7 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 				try {
 					Log.d(TAG, String.format("We couldnt find an existing bridge with URI=%s (nickname=%s)," +
 							"so creating one now", requested.toString(), requested.getFragment()));
-					bound.openConnection(requested);
+					requestedBridge = bound.openConnection(requested);
 				} catch (Exception e) {
 					Log.e(TAG, "Problem while trying to create new requested bridge from URI", e);
 					// TODO: We should display an error dialog here.
@@ -1384,16 +1449,17 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 
 				adapter.notifyDataSetChanged();
 				updateEmptyVisible();
-				requestedIndex = adapter.getCount();
-			} else {
-				final int flipIndex = bound.getBridges().indexOf(requestedBridge);
-				if (flipIndex > requestedIndex) {
-					requestedIndex = flipIndex;
-				}
+			}
+
+			requestedIndex = bound.getBridges().indexOf(requestedBridge);
+			if (requestedIndex < 0) {
+				requestedIndex = 0;
 			}
 
 			setDisplayedTerminal(requestedIndex);
 		}
+
+		handleDeepLinkCommand(intent, requested, requestedBridge);
 	}
 
 	@Override

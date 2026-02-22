@@ -19,6 +19,7 @@ package org.connectbot.service;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -121,6 +122,9 @@ public class TerminalBridge implements VDUDisplay {
 	private final List<FontSizeChangedListener> fontSizeChangedListeners;
 
 	private final List<String> localOutput;
+
+	private final Object pendingInjectionsLock = new Object();
+	private final ArrayDeque<String> pendingInjections = new ArrayDeque<>();
 
 	/**
 	 * Flag indicating if we should perform a full-screen redraw during our next
@@ -398,6 +402,35 @@ public class TerminalBridge implements VDUDisplay {
 		injectStringThread.start();
 	}
 
+	public void injectStringWhenConnected(final String string) {
+		if (string == null || string.length() == 0) {
+			return;
+		}
+
+		if (isSessionOpen()) {
+			injectString(string);
+			return;
+		}
+
+		synchronized (pendingInjectionsLock) {
+			pendingInjections.add(string);
+		}
+	}
+
+	private void flushPendingInjections() {
+		StringBuilder sb = null;
+		synchronized (pendingInjectionsLock) {
+			if (pendingInjections.isEmpty()) {
+				return;
+			}
+			sb = new StringBuilder();
+			while (!pendingInjections.isEmpty()) {
+				sb.append(pendingInjections.removeFirst());
+			}
+		}
+		injectString(sb.toString());
+	}
+
 	/**
 	 * Internal method to request actual PTY terminal once we've finished
 	 * authentication. If called before authenticated, it will just fail.
@@ -443,6 +476,8 @@ public class TerminalBridge implements VDUDisplay {
 			}
 			injectString(postLogin);
 		}
+
+		flushPendingInjections();
 	}
 
 	/**
