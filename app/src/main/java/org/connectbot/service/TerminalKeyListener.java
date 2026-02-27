@@ -577,6 +577,9 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 						getStateForBuffer());
 				return true;
 			case KeyEvent.KEYCODE_ENTER:
+				if (isAltPressed(derivedMetaState)) {
+					sendEscape();
+				}
 				((vt320) buffer).keyTyped(vt320.KEY_ENTER, ' ', 0);
 				return true;
 
