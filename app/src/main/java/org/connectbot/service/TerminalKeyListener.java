@@ -715,9 +715,14 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			case KeyEvent.KEYCODE_ENTER:
 			case KeyEvent.KEYCODE_NUMPAD_ENTER:
 				if (isAltPressed(derivedMetaState)) {
-					sendEscape();
+					// Send ESC+CR in a single write. Some upstream key decoders (and tmux) use a
+					// short timeout to decide whether an ESC is a standalone Escape key or an
+					// Alt/Meta prefix. Sending as one transport write avoids timing ambiguity on
+					// higher-latency SSH links.
+					bridge.transport.write(new byte[] { 0x1b, '\r' });
+				} else {
+					((vt320) buffer).keyTyped(vt320.KEY_ENTER, ' ', 0);
 				}
-				((vt320) buffer).keyTyped(vt320.KEY_ENTER, ' ', 0);
 				return true;
 
 			case KeyEvent.KEYCODE_DPAD_LEFT:
