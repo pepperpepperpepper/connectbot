@@ -257,7 +257,7 @@ public class TerminalKeyListenerXtermKeysTest {
 	}
 
 	@Test
-	public void altEnterSendsEscapePrefixBeforeCarriageReturn() throws IOException {
+	public void altEnterSendsCsiUSequence() throws IOException {
 		TerminalManager manager = Robolectric.buildService(TestTerminalManager.class).create().get();
 		HostBean host = createHost();
 		TerminalBridge bridge = new TerminalBridge(manager, host);
@@ -273,7 +273,7 @@ public class TerminalKeyListenerXtermKeysTest {
 				KeyEvent.KEYCODE_ENTER,
 				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0, KeyEvent.META_ALT_ON));
 
-		assertEquals("\u001b\r", transport.drainUtf8());
+		assertEquals("\u001b[13;3u", transport.drainUtf8());
 	}
 
 	@Test
@@ -295,6 +295,6 @@ public class TerminalKeyListenerXtermKeysTest {
 				KeyEvent.KEYCODE_ENTER,
 				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0, 0));
 
-		assertEquals("\u001b\r", transport.drainUtf8());
+		assertEquals("\u001b[13;3u", transport.drainUtf8());
 	}
 }

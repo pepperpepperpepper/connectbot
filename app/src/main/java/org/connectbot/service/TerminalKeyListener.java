@@ -714,14 +714,19 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 				return true;
 			case KeyEvent.KEYCODE_ENTER:
 			case KeyEvent.KEYCODE_NUMPAD_ENTER:
-				if (isAltPressed(derivedMetaState)) {
-					// Send ESC+CR in a single write. Some upstream key decoders (and tmux) use a
-					// short timeout to decide whether an ESC is a standalone Escape key or an
-					// Alt/Meta prefix. Sending as one transport write avoids timing ambiguity on
-					// higher-latency SSH links.
-					bridge.transport.write(new byte[] { 0x1b, '\r' });
-				} else {
-					((vt320) buffer).keyTyped(vt320.KEY_ENTER, ' ', 0);
+				{
+					// For ALT/CTRL/SHIFT-modified Enter, use a CSI-u style encoding so terminal
+					// key decoders (like crossterm) can distinguish ALT+Enter from Escape then
+					// Enter. (ESC+CR is inherently ambiguous and can be parsed as two keys.)
+					final boolean ctrlPressed = isCtrlPressed(derivedMetaState);
+					final boolean altPressed = isAltPressed(derivedMetaState);
+					if (shiftPressed || altPressed || ctrlPressed) {
+						final int modifierParam = getXtermModifierParam(
+								shiftPressed, altPressed, ctrlPressed);
+						writeXtermCsi(String.format("\u001b[13;%du", modifierParam));
+					} else {
+						((vt320) buffer).keyTyped(vt320.KEY_ENTER, ' ', 0);
+					}
 				}
 				return true;
 
