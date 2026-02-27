@@ -275,4 +275,26 @@ public class TerminalKeyListenerXtermKeysTest {
 
 		assertEquals("\u001b\r", transport.drainUtf8());
 	}
+
+	@Test
+	public void altEnterUsesGlobalAltStateWhenAltKeyEventIsNotDeliveredToListener() throws IOException {
+		TerminalManager manager = Robolectric.buildService(TestTerminalManager.class).create().get();
+		HostBean host = createHost();
+		TerminalBridge bridge = new TerminalBridge(manager, host);
+
+		RecordingTransport transport = new RecordingTransport(host, bridge, manager);
+		bridge.transport = transport;
+
+		TerminalKeyListener keyListener = bridge.getKeyHandler();
+		View v = new View(ApplicationProvider.getApplicationContext());
+
+		TerminalKeyListener.updateGlobalHardwareAltDownFromKeyEvent(
+				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ALT_LEFT, 0, 0));
+		keyListener.onKey(
+				v,
+				KeyEvent.KEYCODE_ENTER,
+				new KeyEvent(0, 0, KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_ENTER, 0, 0));
+
+		assertEquals("\u001b\r", transport.drainUtf8());
+	}
 }

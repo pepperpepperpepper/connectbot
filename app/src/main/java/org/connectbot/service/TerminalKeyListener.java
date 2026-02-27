@@ -105,6 +105,12 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 	// Track ctrl down/up so Ctrl+Arrow can still emit xterm-modified key sequences.
 	private boolean hardwareCtrlDown = false;
 
+	// Hardware modifier tracking: some keyboards do not include alt meta-state on
+	// non-printable keys (like ENTER), but they do send separate alt key events.
+	// Track alt down/up so Alt+<key> can still be encoded correctly.
+	private boolean hardwareAltLeftDown = false;
+	private boolean hardwareAltRightDown = false;
+
 	// Some environments deliver KEYCODE_CTRL events to the Activity but not to our focused View
 	// (or deliver them inconsistently). Track a global ctrl-down state that can be updated from
 	// ConsoleActivity.dispatchKeyEvent() as a best-effort fallback for Ctrl+Arrow and similar keys.
@@ -112,12 +118,26 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 	private static volatile long globalHardwareCtrlLastUpdateUptimeMillis = -1L;
 	private static final long GLOBAL_HARDWARE_CTRL_STUCK_TIMEOUT_MILLIS = 2 * 60_000L;
 
+	// Similar global tracking for ALT, updated from ConsoleActivity.dispatchKeyEvent(). Track left
+	// and right separately because one side may be repurposed as Slash/Tab depending on keymode.
+	private static volatile boolean globalHardwareAltLeftDown = false;
+	private static volatile long globalHardwareAltLeftLastUpdateUptimeMillis = -1L;
+	private static volatile boolean globalHardwareAltRightDown = false;
+	private static volatile long globalHardwareAltRightLastUpdateUptimeMillis = -1L;
+	private static final long GLOBAL_HARDWARE_ALT_STUCK_TIMEOUT_MILLIS = 2 * 60_000L;
+
 	// Soft keyboard Ctrl is often delivered as a "one-shot" press (down+up) and some IMEs omit
 	// ctrl meta-state on non-printable keys (like DPAD arrows). Track a global one-shot Ctrl
 	// state so Ctrl+Arrow can still emit xterm-modified sequences even after Ctrl has been released.
 	private static volatile boolean globalCtrlOneShotActive = false;
 	private static volatile long globalCtrlOneShotLastUpdateUptimeMillis = -1L;
 	private static final long GLOBAL_CTRL_ONE_SHOT_TIMEOUT_MILLIS = 10_000L;
+
+	// Soft keyboard Alt can also behave like a one-shot modifier, and some IMEs omit alt meta-state
+	// on non-printable keys. Track a global one-shot Alt state as a best-effort fallback.
+	private static volatile boolean globalAltOneShotActive = false;
+	private static volatile long globalAltOneShotLastUpdateUptimeMillis = -1L;
+	private static final long GLOBAL_ALT_ONE_SHOT_TIMEOUT_MILLIS = 10_000L;
 
 	private static boolean isLikelyVirtualOrSoftKeyboardKeyEvent(KeyEvent event) {
 		if ((event.getFlags() & KeyEvent.FLAG_SOFT_KEYBOARD) != 0) {
@@ -152,11 +172,41 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 		}
 	}
 
+	public static void updateGlobalHardwareAltDownFromKeyEvent(KeyEvent event) {
+		final int keyCode = event.getKeyCode();
+		final boolean down = (event.getAction() == KeyEvent.ACTION_DOWN);
+		final long now = SystemClock.uptimeMillis();
+
+		if (keyCode == KeyEvent.KEYCODE_ALT_LEFT) {
+			globalHardwareAltLeftDown = down;
+			globalHardwareAltLeftLastUpdateUptimeMillis = now;
+		} else if (keyCode == KeyEvent.KEYCODE_ALT_RIGHT) {
+			globalHardwareAltRightDown = down;
+			globalHardwareAltRightLastUpdateUptimeMillis = now;
+		} else {
+			return;
+		}
+
+		if (down
+				&& event.getRepeatCount() == 0
+				&& isLikelyVirtualOrSoftKeyboardKeyEvent(event)) {
+			globalAltOneShotActive = true;
+			globalAltOneShotLastUpdateUptimeMillis = now;
+		}
+	}
+
 	public static void resetGlobalHardwareCtrlDown() {
 		globalHardwareCtrlDown = false;
 		globalHardwareCtrlLastUpdateUptimeMillis = -1L;
 		globalCtrlOneShotActive = false;
 		globalCtrlOneShotLastUpdateUptimeMillis = -1L;
+
+		globalHardwareAltLeftDown = false;
+		globalHardwareAltLeftLastUpdateUptimeMillis = -1L;
+		globalHardwareAltRightDown = false;
+		globalHardwareAltRightLastUpdateUptimeMillis = -1L;
+		globalAltOneShotActive = false;
+		globalAltOneShotLastUpdateUptimeMillis = -1L;
 	}
 
 	private static boolean isGlobalHardwareCtrlDownActive() {
@@ -169,6 +219,36 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 		}
 		if (SystemClock.uptimeMillis() - lastUpdate > GLOBAL_HARDWARE_CTRL_STUCK_TIMEOUT_MILLIS) {
 			globalHardwareCtrlDown = false;
+			return false;
+		}
+		return true;
+	}
+
+	private static boolean isGlobalHardwareAltLeftDownActive() {
+		if (!globalHardwareAltLeftDown) {
+			return false;
+		}
+		final long lastUpdate = globalHardwareAltLeftLastUpdateUptimeMillis;
+		if (lastUpdate < 0L) {
+			return false;
+		}
+		if (SystemClock.uptimeMillis() - lastUpdate > GLOBAL_HARDWARE_ALT_STUCK_TIMEOUT_MILLIS) {
+			globalHardwareAltLeftDown = false;
+			return false;
+		}
+		return true;
+	}
+
+	private static boolean isGlobalHardwareAltRightDownActive() {
+		if (!globalHardwareAltRightDown) {
+			return false;
+		}
+		final long lastUpdate = globalHardwareAltRightLastUpdateUptimeMillis;
+		if (lastUpdate < 0L) {
+			return false;
+		}
+		if (SystemClock.uptimeMillis() - lastUpdate > GLOBAL_HARDWARE_ALT_STUCK_TIMEOUT_MILLIS) {
+			globalHardwareAltRightDown = false;
 			return false;
 		}
 		return true;
@@ -191,6 +271,23 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 		return true;
 	}
 
+	private static boolean consumeGlobalAltOneShotIfActive() {
+		if (!globalAltOneShotActive) {
+			return false;
+		}
+		final long lastUpdate = globalAltOneShotLastUpdateUptimeMillis;
+		if (lastUpdate < 0L) {
+			globalAltOneShotActive = false;
+			return false;
+		}
+		if (SystemClock.uptimeMillis() - lastUpdate > GLOBAL_ALT_ONE_SHOT_TIMEOUT_MILLIS) {
+			globalAltOneShotActive = false;
+			return false;
+		}
+		globalAltOneShotActive = false;
+		return true;
+	}
+
 	private static boolean consumeGlobalCtrlOneShotIfActiveForKeyEvent(int keyCode, KeyEvent event) {
 		if (keyCode == KEYCODE_CTRL_LEFT || keyCode == KEYCODE_CTRL_RIGHT) {
 			return false;
@@ -202,6 +299,19 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			return false;
 		}
 		return consumeGlobalCtrlOneShotIfActive();
+	}
+
+	private static boolean consumeGlobalAltOneShotIfActiveForKeyEvent(int keyCode, KeyEvent event) {
+		if (keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT) {
+			return false;
+		}
+		if (event.getAction() != KeyEvent.ACTION_DOWN) {
+			return false;
+		}
+		if (event.getRepeatCount() != 0) {
+			return false;
+		}
+		return consumeGlobalAltOneShotIfActive();
 	}
 
 	// TODO add support for the new API.
@@ -304,6 +414,15 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 				}
 
 				return true;
+			}
+
+			if (keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT) {
+				updateGlobalHardwareAltDownFromKeyEvent(event);
+				if (keyCode == KeyEvent.KEYCODE_ALT_LEFT) {
+					hardwareAltLeftDown = (event.getAction() == KeyEvent.ACTION_DOWN);
+				} else {
+					hardwareAltRightDown = (event.getAction() == KeyEvent.ACTION_DOWN);
+				}
 			}
 
 			// Ignore all key-up events except for the special keys
@@ -445,10 +564,27 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 			if (hardwareCtrlDown || isGlobalHardwareCtrlDownActive())
 				derivedMetaState |= HC_META_CTRL_ON;
 
+			final boolean altLeftActsAsModifier = !leftModifiersAreSlashAndTab;
+			final boolean altRightActsAsModifier = !rightModifiersAreSlashAndTab;
+			final boolean hardwareAltDown =
+					(altLeftActsAsModifier && hardwareAltLeftDown) ||
+					(altRightActsAsModifier && hardwareAltRightDown);
+			final boolean globalAltDown =
+					(altLeftActsAsModifier && isGlobalHardwareAltLeftDownActive()) ||
+					(altRightActsAsModifier && isGlobalHardwareAltRightDownActive());
+			if (hardwareAltDown || globalAltDown)
+				derivedMetaState |= KeyEvent.META_ALT_ON;
+
 			final boolean consumedGlobalCtrlOneShot =
 					consumeGlobalCtrlOneShotIfActiveForKeyEvent(keyCode, event);
 			if (consumedGlobalCtrlOneShot && !isCtrlPressed(derivedMetaState))
 				derivedMetaState |= HC_META_CTRL_ON;
+
+			final boolean consumedGlobalAltOneShot =
+					PreferenceConstants.KEYMODE_NONE.equals(keymode) &&
+					consumeGlobalAltOneShotIfActiveForKeyEvent(keyCode, event);
+			if (consumedGlobalAltOneShot && !isAltPressed(derivedMetaState))
+				derivedMetaState |= KeyEvent.META_ALT_ON;
 
 			final boolean shiftPressed = isShiftPressed(derivedMetaState);
 
@@ -577,6 +713,7 @@ public class TerminalKeyListener implements OnKeyListener, OnSharedPreferenceCha
 						getStateForBuffer());
 				return true;
 			case KeyEvent.KEYCODE_ENTER:
+			case KeyEvent.KEYCODE_NUMPAD_ENTER:
 				if (isAltPressed(derivedMetaState)) {
 					sendEscape();
 				}

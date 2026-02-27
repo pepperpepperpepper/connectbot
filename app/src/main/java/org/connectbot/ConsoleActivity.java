@@ -918,6 +918,9 @@ public class ConsoleActivity extends AppCompatActivity implements BridgeDisconne
 		if (keyCode == KeyEvent.KEYCODE_CTRL_LEFT || keyCode == KeyEvent.KEYCODE_CTRL_RIGHT) {
 			TerminalKeyListener.updateGlobalHardwareCtrlDownFromKeyEvent(event);
 		}
+		if (keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT) {
+			TerminalKeyListener.updateGlobalHardwareAltDownFromKeyEvent(event);
+		}
 		return super.dispatchKeyEvent(event);
 	}
 
