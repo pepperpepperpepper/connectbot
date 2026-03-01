@@ -133,6 +133,7 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 		setPadding(0, 0, 0, 0);
 		setHorizontallyScrolling(true);
 		setTextIsSelectable(true);
+		setCursorVisible(false);
 		setCustomSelectionActionModeCallback(new TextSelectionActionModeCallback());
 	}
 
@@ -507,8 +508,10 @@ public class TerminalTextViewOverlay extends androidx.appcompat.widget.AppCompat
 
 	@Override
 	public boolean onCheckIsTextEditor() {
-		// This prevents a cursor being displayed within the text.
-		return false;
+		// This overlay commonly becomes the focused view. Treat it as a text editor so IMEs use
+		// our InputConnection and can support behaviors like long-press key repeat (e.g. delete).
+		// Cursor visibility is explicitly disabled in the constructor.
+		return true;
 	}
 
 	@Override
