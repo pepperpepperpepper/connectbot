@@ -30,8 +30,11 @@ import androidx.test.ext.junit.runners.AndroidJUnit4;
 import androidx.test.rule.ActivityTestRule;
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry;
 import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.inputmethod.EditorInfo;
+import android.view.inputmethod.InputConnection;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -200,9 +203,70 @@ public class TerminalSelectionCopyTest {
 		}
 	}
 
-	@Test
-	public void selectionCopyWorksAfterRepeatedKeyboardTogglesAndOutput() {
-		Context testContext = ApplicationProvider.getApplicationContext();
+		@Test
+		public void imeDeleteSurroundingTextSynthesizesDownUpKeyEvents() {
+			Context testContext = ApplicationProvider.getApplicationContext();
+
+			SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
+			boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);
+
+			try {
+				settings.edit()
+						.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false)
+						.commit();
+
+				startNewLocalConnectionWithoutIntents("Local");
+				ConsoleActivity consoleActivity = waitForConsoleActivity(10000L);
+				TerminalView terminalView = waitForTerminalView(consoleActivity, 10000L);
+
+				ensureSoftKeyboardVisibility(consoleActivity, true);
+
+				final int deleteCount = 10;
+				final int[] downCount = new int[1];
+				final int[] upCount = new int[1];
+
+				getInstrumentation().runOnMainSync(new Runnable() {
+					@Override
+					public void run() {
+						terminalView.requestFocus();
+						terminalView.setOnKeyListener(new View.OnKeyListener() {
+							@Override
+							public boolean onKey(View v, int keyCode, KeyEvent event) {
+								if (keyCode != KeyEvent.KEYCODE_DEL) {
+									return false;
+								}
+								if (event.getAction() == KeyEvent.ACTION_DOWN) {
+									downCount[0]++;
+								} else if (event.getAction() == KeyEvent.ACTION_UP) {
+									upCount[0]++;
+								}
+								return true;
+							}
+						});
+
+						InputConnection inputConnection = terminalView.onCreateInputConnection(new EditorInfo());
+						for (int i = 0; i < deleteCount; i++) {
+							inputConnection.deleteSurroundingText(1, 0);
+						}
+					}
+				});
+
+				// InputConnection events may be dispatched asynchronously; give the main thread a chance to
+				// deliver the synthesized KeyEvents to our OnKeyListener.
+				onView(withId(R.id.console_flip)).perform(loopMainThreadFor(TERMINAL_UI_SETTLE_DELAY_MILLIS));
+
+				assertThat(downCount[0], equalTo(deleteCount));
+				assertThat(upCount[0], equalTo(deleteCount));
+			} finally {
+				settings.edit()
+						.putBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, wasAlwaysVisible)
+						.commit();
+			}
+		}
+
+		@Test
+		public void selectionCopyWorksAfterRepeatedKeyboardTogglesAndOutput() {
+			Context testContext = ApplicationProvider.getApplicationContext();
 
 		SharedPreferences settings = PreferenceManager.getDefaultSharedPreferences(testContext);
 		boolean wasAlwaysVisible = settings.getBoolean(PreferenceConstants.KEY_ALWAYS_VISIBLE, false);

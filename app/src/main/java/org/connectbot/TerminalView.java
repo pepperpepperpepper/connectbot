@@ -48,6 +48,7 @@ import android.graphics.RectF;
 import android.net.Uri;
 import android.os.Build;
 import android.os.AsyncTask;
+import android.os.SystemClock;
 import android.preference.PreferenceManager;
 import android.text.ClipboardManager;
 import android.util.TypedValue;
@@ -634,29 +635,46 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 
 	@Override
 	public InputConnection onCreateInputConnection(EditorInfo outAttrs) {
-		outAttrs.imeOptions |=
-			EditorInfo.IME_FLAG_NO_EXTRACT_UI |
-			EditorInfo.IME_FLAG_NO_ENTER_ACTION |
-			EditorInfo.IME_ACTION_NONE;
-		// Turn off suggestions
-		outAttrs.inputType = EditorInfo.TYPE_NULL |
-				EditorInfo.TYPE_TEXT_VARIATION_PASSWORD |
-				EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD |
-				EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
-		return new BaseInputConnection(this, false) {
-			@Override
-			public boolean deleteSurroundingText (int leftLength, int rightLength) {
-				if (rightLength == 0 && leftLength == 0) {
-					return this.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
+			outAttrs.imeOptions |=
+				EditorInfo.IME_FLAG_NO_EXTRACT_UI |
+				EditorInfo.IME_FLAG_NO_ENTER_ACTION |
+				EditorInfo.IME_ACTION_NONE;
+			// Turn off suggestions
+				outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT |
+						EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD |
+						EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
+				return new BaseInputConnection(this, false) {
+					private void sendDownUpKeyEventsCompat(int keyCode) {
+						final long downTime = SystemClock.uptimeMillis();
+						sendKeyEvent(new KeyEvent(downTime, downTime, KeyEvent.ACTION_DOWN, keyCode, 0));
+						sendKeyEvent(new KeyEvent(downTime, SystemClock.uptimeMillis(),
+								KeyEvent.ACTION_UP, keyCode, 0));
+					}
+
+					@Override
+					public boolean deleteSurroundingText (int leftLength, int rightLength) {
+					// IMEs typically implement backspace via deleteSurroundingText(), including long-press
+					// repeat. We must synthesize complete key presses (DOWN+UP) or subsequent deletes can
+						// be dropped as "invalid" key sequences.
+						if (rightLength == 0 && leftLength == 0) {
+							sendDownUpKeyEventsCompat(KeyEvent.KEYCODE_DEL);
+							return true;
+						}
+						for (int i = 0; i < leftLength; i++) {
+							sendDownUpKeyEventsCompat(KeyEvent.KEYCODE_DEL);
+						}
+						for (int i = 0; i < rightLength; i++) {
+							sendDownUpKeyEventsCompat(KeyEvent.KEYCODE_FORWARD_DEL);
+						}
+						return true;
+					}
+
+				@Override
+				public boolean deleteSurroundingTextInCodePoints(int beforeLength, int afterLength) {
+					return deleteSurroundingText(beforeLength, afterLength);
 				}
-				for (int i = 0; i < leftLength; i++) {
-					this.sendKeyEvent(new KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL));
-				}
-				// TODO: forward delete
-				return true;
-			}
-		};
-	}
+			};
+		}
 
 	public void propagateConsoleText(char[] rawText, int length) {
 		if (mAccessibilityActive) {
