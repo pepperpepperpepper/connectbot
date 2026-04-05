@@ -116,6 +116,9 @@ public class TerminalBridge implements VDUDisplay {
 	// actually sees on screen (the last-drawn bitmap), not necessarily the newest buffer state.
 	private volatile int lastDrawnWindowBase = -1;
 	private volatile int lastDrawnScreenBase = -1;
+	private volatile char[][] lastDrawnCharRows = null;
+	private volatile int lastDrawnViewportHash = 0;
+	private volatile long lastDrawnFrameSerial = 0L;
 
 	private float fontSizeDp = -1;
 
@@ -919,10 +922,21 @@ public class TerminalBridge implements VDUDisplay {
 			// reset entire-buffer flags
 			buffer.update[0] = false;
 
+			char[][] drawnRows = new char[buffer.height][];
+			int viewportHash = 1;
+			for (int l = 0; l < buffer.height; l++) {
+				char[] row = buffer.charArray[buffer.windowBase + l];
+				drawnRows[l] = row == null ? null : row.clone();
+				viewportHash = 31 * viewportHash + java.util.Arrays.hashCode(drawnRows[l]);
+			}
+
 			// Record the viewport that was drawn so selection can align to the visible bitmap even
 			// if the buffer advances before the next frame is rendered.
+			lastDrawnCharRows = drawnRows;
 			lastDrawnWindowBase = buffer.windowBase;
 			lastDrawnScreenBase = buffer.screenBase;
+			lastDrawnViewportHash = viewportHash;
+			lastDrawnFrameSerial++;
 		}
 		fullRedraw = false;
 	}
@@ -933,6 +947,30 @@ public class TerminalBridge implements VDUDisplay {
 
 	public int getLastDrawnScreenBase() {
 		return lastDrawnScreenBase;
+	}
+
+	public int getLastDrawnViewportHash() {
+		return lastDrawnViewportHash;
+	}
+
+	public long getLastDrawnFrameSerial() {
+		return lastDrawnFrameSerial;
+	}
+
+	public char[] getLastDrawnCharRow(int absoluteRow) {
+		char[][] snapshot = lastDrawnCharRows;
+		int drawnWindowBase = lastDrawnWindowBase;
+		if (snapshot == null || drawnWindowBase < 0) {
+			return null;
+		}
+
+		int relativeRow = absoluteRow - drawnWindowBase;
+		if (relativeRow < 0 || relativeRow >= snapshot.length) {
+			return null;
+		}
+
+		char[] row = snapshot[relativeRow];
+		return row == null ? null : row.clone();
 	}
 
 	/**

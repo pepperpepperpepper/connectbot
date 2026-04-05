@@ -581,6 +581,10 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 				canvas.drawPaint(cursorPaint);
 				canvas.restore();
 			}
+
+			if (terminalTextViewOverlay != null) {
+				terminalTextViewOverlay.onTerminalFrameDrawn();
+			}
 		}
 	}
 
@@ -639,9 +643,9 @@ public class TerminalView extends FrameLayout implements FontSizeChangedListener
 				EditorInfo.IME_FLAG_NO_EXTRACT_UI |
 				EditorInfo.IME_FLAG_NO_ENTER_ACTION |
 				EditorInfo.IME_ACTION_NONE;
-			// Turn off suggestions
+			// Turn off suggestions without marking the field as password-like; password variations
+			// cause Android to mask clipboard previews for copied terminal text.
 				outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT |
-						EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD |
 						EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS;
 				return new BaseInputConnection(this, false) {
 					private void sendDownUpKeyEventsCompat(int keyCode) {
