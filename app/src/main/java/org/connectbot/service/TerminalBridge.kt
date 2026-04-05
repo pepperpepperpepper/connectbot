@@ -41,6 +41,10 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import org.connectbot.automation.AutomationKeyStroke
+import org.connectbot.automation.SessionAutomationRequest
 import org.connectbot.R
 import org.connectbot.data.entity.Host
 import org.connectbot.data.entity.PortForward
@@ -76,6 +80,8 @@ class TerminalBridge {
     }
 
     private val transportOperations = Channel<TransportOperation>(Channel.UNLIMITED)
+    private val pendingAutomationRequests = mutableListOf<SessionAutomationRequest>()
+    private val automationMutex = Mutex()
 
     var color: IntArray = IntArray(0)
 
@@ -493,6 +499,26 @@ class TerminalBridge {
         )
     }
 
+    fun queueAutomation(request: SessionAutomationRequest) {
+        if (request.isEmpty()) {
+            return
+        }
+
+        val runImmediately =
+            synchronized(pendingAutomationRequests) {
+                if (!isSessionOpen) {
+                    pendingAutomationRequests.add(request)
+                    false
+                } else {
+                    true
+                }
+            }
+
+        if (runImmediately) {
+            dispatchAutomation(request)
+        }
+    }
+
     /**
      * Request the parent ConsoleScreen to open the floating text input dialog.
      * Called from hardware camera button or other triggers.
@@ -538,8 +564,37 @@ class TerminalBridge {
         // finally send any post-login string, if requested
         injectString(host.postLogin)
 
+        val queuedAutomation =
+            synchronized(pendingAutomationRequests) {
+                if (pendingAutomationRequests.isEmpty()) {
+                    emptyList()
+                } else {
+                    pendingAutomationRequests.toList().also { pendingAutomationRequests.clear() }
+                }
+            }
+        queuedAutomation.forEach(::dispatchAutomation)
+
         // Capture network state after successful connection
         captureNetworkState()
+    }
+
+    private fun dispatchAutomation(request: SessionAutomationRequest) {
+        scope.launch(dispatchers.io) {
+            automationMutex.withLock {
+                if (request.delayMs > 0) {
+                    delay(request.delayMs)
+                }
+                if (!isSessionOpen) {
+                    return@withLock
+                }
+                request.text?.let(::injectString)
+                request.keyStrokes.forEach(::dispatchAutomationKeyStroke)
+            }
+        }
+    }
+
+    private fun dispatchAutomationKeyStroke(keyStroke: AutomationKeyStroke) {
+        terminalEmulator.dispatchKey(keyStroke.modifiers, keyStroke.key)
     }
 
     /**

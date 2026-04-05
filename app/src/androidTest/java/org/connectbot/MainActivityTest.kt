@@ -21,17 +21,21 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.os.Build
-import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.preference.PreferenceManager
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import dagger.hilt.android.testing.HiltAndroidRule
 import dagger.hilt.android.testing.HiltAndroidTest
 import kotlinx.coroutines.runBlocking
+import org.connectbot.automation.SessionAutomationIntents
 import org.connectbot.ui.MainActivity
+import org.connectbot.util.PreferenceConstants
 import org.connectbot.util.TestUriBuilder
 import org.connectbot.util.waitForBridgeByNickname
+import org.connectbot.util.waitForRecentText
 import org.connectbot.util.waitUntilServiceBound
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
@@ -52,6 +56,12 @@ class MainActivityTest {
     fun setUp() {
         hiltRule.inject()
         assumeTrue(Build.VERSION.SDK_INT >= Build.VERSION_CODES.N_MR1)
+        @Suppress("DEPRECATION")
+        PreferenceManager.getDefaultSharedPreferences(context)
+            .edit()
+            .putBoolean(PreferenceConstants.CONNECTION_PERSIST, false)
+            .putBoolean(PreferenceConstants.ALLOW_AUTOMATION_INTENTS, true)
+            .commit()
     }
 
     @Test
@@ -91,6 +101,89 @@ class MainActivityTest {
 
                 assertNotNull("Shortcut should create connection", bridge)
                 assertTrue("Shortcut host should be temporary", bridge.host.id < 0)
+            }
+        }
+    }
+
+    @Test
+    fun automationIntent_localUri_runsCommandOnNewSession() {
+        val uri = TestUriBuilder.local("LocalAutomation")
+        val automationIntent = Intent(SessionAutomationIntents.ACTION_AUTOMATE_SESSION, uri).apply {
+            setClass(context, MainActivity::class.java)
+            putExtra(
+                SessionAutomationIntents.EXTRA_TEXT,
+                "echo \"__CB_${'$'}((7*13))__\""
+            )
+            putExtra(SessionAutomationIntents.EXTRA_APPEND_NEWLINE, true)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+
+        ActivityScenario.launch<MainActivity>(automationIntent).use { scenario ->
+            scenario.onActivity { activity ->
+                val state = runBlocking {
+                    activity.waitUntilServiceBound()
+                }
+                val manager = state.terminalManager
+                val bridge = runBlocking {
+                    manager.waitForBridgeByNickname("LocalAutomation")
+                }
+
+                runBlocking {
+                    bridge.waitForRecentText("__CB_91__")
+                }
+            }
+        }
+    }
+
+    @Test
+    fun automationIntent_reusesExistingSession() {
+        val uri = TestUriBuilder.local("LocalReuse")
+        val openIntent = Intent(Intent.ACTION_VIEW, uri).apply {
+            setClass(context, MainActivity::class.java)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+
+        ActivityScenario.launch<MainActivity>(openIntent).use { scenario ->
+            scenario.onActivity { activity ->
+                val state = runBlocking {
+                    activity.waitUntilServiceBound()
+                }
+                runBlocking {
+                    state.terminalManager.waitForBridgeByNickname("LocalReuse")
+                }
+            }
+        }
+
+        val automationIntent = Intent(SessionAutomationIntents.ACTION_AUTOMATE_SESSION, uri).apply {
+            setClass(context, MainActivity::class.java)
+            putExtra(
+                SessionAutomationIntents.EXTRA_TEXT,
+                "echo \"__REUSE_${'$'}((8*12))__\""
+            )
+            putExtra(SessionAutomationIntents.EXTRA_APPEND_NEWLINE, true)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
+
+        ActivityScenario.launch<MainActivity>(automationIntent).use { scenario ->
+            scenario.onActivity { activity ->
+                val state = runBlocking {
+                    activity.waitUntilServiceBound()
+                }
+                val manager = state.terminalManager
+                val bridge = runBlocking {
+                    manager.waitForBridgeByNickname("LocalReuse")
+                }
+
+                assertEquals(
+                    1,
+                    manager.bridgesFlow.value.count { it.host.nickname == "LocalReuse" }
+                )
+                runBlocking {
+                    bridge.waitForRecentText("__REUSE_96__")
+                }
             }
         }
     }

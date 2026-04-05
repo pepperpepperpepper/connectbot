@@ -54,6 +54,7 @@ import androidx.preference.PreferenceManager
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.launch
 import org.connectbot.R
+import org.connectbot.automation.SessionAutomationIntents
 import org.connectbot.data.entity.Host
 import org.connectbot.service.TerminalManager
 import org.connectbot.ui.components.DisconnectAllDialog
@@ -353,6 +354,12 @@ import timber.log.Timber
 
         lifecycleScope.launch {
             try {
+                val prefs = PreferenceManager.getDefaultSharedPreferences(this@MainActivity)
+                val automationEnabled =
+                    prefs.getBoolean(PreferenceConstants.ALLOW_AUTOMATION_INTENTS, false)
+                val automationRequest =
+                    SessionAutomationIntents.parse(intent, automationEnabled)
+
                 val nickname = uri.fragment ?: uri.authority
                 Timber.d("handleConnectionUri: nickname=$nickname")
                 var bridge = manager.getConnectedBridge(nickname)
@@ -360,6 +367,15 @@ import timber.log.Timber
                 if (bridge == null) {
                     Timber.d("Creating new connection for URI: $uri with nickname: $nickname")
                     bridge = manager.openConnection(uri)
+                }
+
+                automationRequest?.let { request ->
+                    Timber.d(
+                        "Queueing session automation for host=%s action=%s",
+                        bridge.host.nickname,
+                        intent?.action
+                    )
+                    bridge.queueAutomation(request)
                 }
 
                 controller.navigate("${NavDestinations.CONSOLE}/${bridge.host.id}") {

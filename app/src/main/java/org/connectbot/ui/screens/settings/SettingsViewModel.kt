@@ -46,6 +46,7 @@ import javax.inject.Inject
 data class SettingsUiState(
     val memkeys: Boolean = true,
     val connPersist: Boolean = true,
+    val allowAutomationIntents: Boolean = false,
     val wifilock: Boolean = true,
     val backupkeys: Boolean = false,
     val scrollback: String = "140",
@@ -138,6 +139,8 @@ class SettingsViewModel @Inject constructor(
         return SettingsUiState(
             memkeys = prefs.getBoolean("memkeys", true),
             connPersist = prefs.getBoolean(PreferenceConstants.CONNECTION_PERSIST, true),
+            allowAutomationIntents =
+                prefs.getBoolean(PreferenceConstants.ALLOW_AUTOMATION_INTENTS, false),
             wifilock = prefs.getBoolean("wifilock", true),
             backupkeys = prefs.getBoolean("backupkeys", false),
             scrollback = prefs.getString("scrollback", "140") ?: "140",
@@ -227,6 +230,12 @@ class SettingsViewModel @Inject constructor(
 
         pendingConnPersistEnable = false
         pendingBellNotificationEnable = false
+    }
+
+    fun updateAllowAutomationIntents(value: Boolean) {
+        updateBooleanPref(PreferenceConstants.ALLOW_AUTOMATION_INTENTS, value) {
+            copy(allowAutomationIntents = value)
+        }
     }
 
     fun updateWifilock(value: Boolean) {

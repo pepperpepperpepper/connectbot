@@ -69,3 +69,19 @@ suspend fun TerminalManager.waitForBridgeByNickname(
 ): TerminalBridge {
     return waitForBridge({ it.host.nickname == nickname }, timeoutMillis)
 }
+
+suspend fun TerminalBridge.waitForRecentText(
+    expected: String,
+    timeoutMillis: Long = 5000
+): String {
+    return withTimeout(timeoutMillis) {
+        while (true) {
+            val recent = terminalEmulator.getRecentText(maxLines = 60, maxChars = 4096)
+            if (recent.contains(expected)) {
+                return@withTimeout recent
+            }
+            delay(100)
+        }
+        throw IllegalStateException("Should never reach here")
+    }
+}

@@ -148,6 +148,7 @@ fun SettingsScreen(
         onNavigateBack = onNavigateBack,
         onMemkeysChange = viewModel::updateMemkeys,
         onConnPersistChange = viewModel::updateConnPersist,
+        onAllowAutomationIntentsChange = viewModel::updateAllowAutomationIntents,
         onWifilockChange = viewModel::updateWifilock,
         onBackupkeysChange = viewModel::updateBackupkeys,
         onScrollbackChange = viewModel::updateScrollback,
@@ -192,6 +193,7 @@ fun SettingsScreenContent(
     onNavigateBack: () -> Unit,
     onMemkeysChange: (Boolean) -> Unit,
     onConnPersistChange: (Boolean) -> Unit,
+    onAllowAutomationIntentsChange: (Boolean) -> Unit,
     onWifilockChange: (Boolean) -> Unit,
     onBackupkeysChange: (Boolean) -> Unit,
     onScrollbackChange: (String) -> Unit,
@@ -256,6 +258,15 @@ fun SettingsScreenContent(
                     summary = stringResource(R.string.pref_conn_persist_summary),
                     checked = uiState.connPersist,
                     onCheckedChange = onConnPersistChange
+                )
+            }
+
+            item {
+                SwitchPreference(
+                    title = stringResource(R.string.pref_automation_intents_title),
+                    summary = stringResource(R.string.pref_automation_intents_summary),
+                    checked = uiState.allowAutomationIntents,
+                    onCheckedChange = onAllowAutomationIntentsChange
                 )
             }
 
@@ -1309,6 +1320,7 @@ private fun SettingsScreenPreview() {
             uiState = SettingsUiState(
                 memkeys = true,
                 connPersist = true,
+                allowAutomationIntents = false,
                 wifilock = false,
                 backupkeys = true,
                 scrollback = "500",
@@ -1344,6 +1356,7 @@ private fun SettingsScreenPreview() {
             onNavigateBack = {},
             onMemkeysChange = {},
             onConnPersistChange = {},
+            onAllowAutomationIntentsChange = {},
             onWifilockChange = {},
             onBackupkeysChange = {},
             onScrollbackChange = {},
