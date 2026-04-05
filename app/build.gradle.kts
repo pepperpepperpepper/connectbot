@@ -248,6 +248,22 @@ tasks.withType<Test>().configureEach {
     }
 }
 
+val prepareGoogleDebugAndroidTestDexOutputDirs by tasks.registering {
+    val outDir = layout.buildDirectory.dir(
+        "intermediates/project_dex_archive/googleDebugAndroidTest/dexBuilderGoogleDebugAndroidTest/out"
+    )
+
+    doLast {
+        val out = outDir.get().asFile
+        out.mkdirs()
+        out.resolve("hilt_aggregated_deps").mkdirs()
+    }
+}
+
+tasks.matching { it.name == "dexBuilderGoogleDebugAndroidTest" }.configureEach {
+    dependsOn(prepareGoogleDebugAndroidTestDexOutputDirs)
+}
+
 // Generate filtered export schema from Room schema
 // Only includes tables needed for export/import (profiles, hosts, port_forwards)
 val generateExportSchema by tasks.registering {

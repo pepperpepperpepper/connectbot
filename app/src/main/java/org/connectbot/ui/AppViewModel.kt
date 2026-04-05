@@ -229,6 +229,12 @@ class AppViewModel @Inject constructor(
     ): Boolean {
         Timber.d("checkAndRequestNotificationPermission: uri=$uri, SDK=${Build.VERSION.SDK_INT}")
 
+        val persistConnections = prefs.getBoolean(PreferenceConstants.CONNECTION_PERSIST, true)
+        if (!persistConnections) {
+            Timber.d("Connection persistence disabled, allowing without notification permission")
+            return true
+        }
+
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
             Timber.d("SDK < TIRAMISU, allowing without permission")
             return true
