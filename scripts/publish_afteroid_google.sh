@@ -125,13 +125,16 @@ version_name = sys.argv[2]
 version_code = sys.argv[3]
 
 text = path.read_text(encoding="utf-8")
-text2 = re.sub(r"^CurrentVersion:.*$", f"CurrentVersion: {version_name}", text, flags=re.M)
-text2 = re.sub(r"^CurrentVersionCode:.*$", f"CurrentVersionCode: {version_code}", text2, flags=re.M)
+text2, n_name = re.subn(r"^CurrentVersion:.*$", f"CurrentVersion: {version_name}", text, flags=re.M)
+text2, n_code = re.subn(r"^CurrentVersionCode:.*$", f"CurrentVersionCode: {version_code}", text2, flags=re.M)
 
-if text2 == text:
+# Error only if the fields are genuinely absent; an unchanged (already
+# up-to-date) value is fine and must not abort an idempotent re-run.
+if n_name == 0 or n_code == 0:
     raise SystemExit("Error: did not find CurrentVersion/CurrentVersionCode to update in metadata.")
 
-path.write_text(text2, encoding="utf-8")
+if text2 != text:
+    path.write_text(text2, encoding="utf-8")
 PY
 else
   echo "Warning: metadata missing at ${METADATA_PATH}; skipping CurrentVersion updates." >&2
