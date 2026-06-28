@@ -351,6 +351,14 @@
 	<!-- Summary for the Wi-Fi lock preference -->
 	<string name="pref_wifilock_summary">"Prevent Wi-Fi from turning off when a session is active"</string>
 
+	<!-- Name for the network grace period preference -->
+	<string name="pref_network_grace_period_title">"Network grace period"</string>
+	<!-- Labels for the network grace period preference options -->
+	<string name="list_network_grace_period_1min">"1 minute"</string>
+	<string name="list_network_grace_period_5min">"5 minutes"</string>
+	<string name="list_network_grace_period_15min">"15 minutes"</string>
+	<string name="list_network_grace_period_1hour">"1 hour"</string>
+
 	<!-- Name for the haptic feedback (bumpy arrow) preference -->
 	<string name="pref_bumpyarrows_title">"Bumpy arrows"</string>
 	<!-- Summary for the haptic feedback (bumpy arrow) preference -->

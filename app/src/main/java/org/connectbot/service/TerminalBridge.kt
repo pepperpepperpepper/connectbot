@@ -55,6 +55,7 @@ import org.connectbot.transport.AbsTransport
 import org.connectbot.transport.SSH
 import org.connectbot.transport.TransportFactory
 import org.connectbot.util.HostConstants
+import org.connectbot.util.PreferenceConstants
 import timber.log.Timber
 import java.io.IOException
 import java.nio.charset.Charset
@@ -981,7 +982,7 @@ class TerminalBridge {
 
     /**
      * Called by TerminalManager when network is lost.
-     * Starts 60-second grace period instead of immediate disconnect.
+     * Starts a configurable grace period instead of immediate disconnect.
      */
     fun onNetworkLost() {
         if (!isUsingNetwork() || disconnected) return
@@ -994,9 +995,15 @@ class TerminalBridge {
         // Show status message to user
         outputLine(manager.res.getString(R.string.network_lost_grace_period))
 
-        // Start 60-second timer
+        // Grace period is user-configurable (in seconds) so that switching apps
+        // for a while doesn't tear down the session prematurely.
+        val gracePeriodSeconds = manager.prefs.getString(
+            PreferenceConstants.NETWORK_GRACE_PERIOD,
+            PreferenceConstants.NETWORK_GRACE_PERIOD_DEFAULT
+        )?.toLongOrNull() ?: PreferenceConstants.NETWORK_GRACE_PERIOD_DEFAULT.toLong()
+
         networkGracePeriodJob = scope.launch {
-            delay(60_000) // 60 seconds
+            delay(gracePeriodSeconds * 1000)
 
             // Grace period expired without network restoration
             inGracePeriod = false

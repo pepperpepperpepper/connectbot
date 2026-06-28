@@ -48,6 +48,7 @@ data class SettingsUiState(
     val connPersist: Boolean = true,
     val allowAutomationIntents: Boolean = false,
     val wifilock: Boolean = true,
+    val networkGracePeriod: String = PreferenceConstants.NETWORK_GRACE_PERIOD_DEFAULT,
     val backupkeys: Boolean = false,
     val scrollback: String = "140",
     val rotation: String = "Default",
@@ -142,6 +143,10 @@ class SettingsViewModel @Inject constructor(
             allowAutomationIntents =
                 prefs.getBoolean(PreferenceConstants.ALLOW_AUTOMATION_INTENTS, false),
             wifilock = prefs.getBoolean("wifilock", true),
+            networkGracePeriod = prefs.getString(
+                PreferenceConstants.NETWORK_GRACE_PERIOD,
+                PreferenceConstants.NETWORK_GRACE_PERIOD_DEFAULT
+            ) ?: PreferenceConstants.NETWORK_GRACE_PERIOD_DEFAULT,
             backupkeys = prefs.getBoolean("backupkeys", false),
             scrollback = prefs.getString("scrollback", "140") ?: "140",
             rotation = prefs.getString("rotation", "Default") ?: "Default",
@@ -330,6 +335,12 @@ class SettingsViewModel @Inject constructor(
 
     fun updateStickyModifiers(value: String) {
         updateStringPref("stickymodifiers", value) { copy(stickymodifiers = value) }
+    }
+
+    fun updateNetworkGracePeriod(value: String) {
+        updateStringPref(PreferenceConstants.NETWORK_GRACE_PERIOD, value) {
+            copy(networkGracePeriod = value)
+        }
     }
 
     fun updateKeyMode(value: String) {

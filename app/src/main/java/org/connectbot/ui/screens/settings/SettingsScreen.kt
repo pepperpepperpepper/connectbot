@@ -150,6 +150,7 @@ fun SettingsScreen(
         onConnPersistChange = viewModel::updateConnPersist,
         onAllowAutomationIntentsChange = viewModel::updateAllowAutomationIntents,
         onWifilockChange = viewModel::updateWifilock,
+        onNetworkGracePeriodChange = viewModel::updateNetworkGracePeriod,
         onBackupkeysChange = viewModel::updateBackupkeys,
         onScrollbackChange = viewModel::updateScrollback,
         onAddCustomTerminalType = viewModel::addCustomTerminalType,
@@ -195,6 +196,7 @@ fun SettingsScreenContent(
     onConnPersistChange: (Boolean) -> Unit,
     onAllowAutomationIntentsChange: (Boolean) -> Unit,
     onWifilockChange: (Boolean) -> Unit,
+    onNetworkGracePeriodChange: (String) -> Unit,
     onBackupkeysChange: (Boolean) -> Unit,
     onScrollbackChange: (String) -> Unit,
     onAddCustomTerminalType: (String) -> Unit,
@@ -276,6 +278,27 @@ fun SettingsScreenContent(
                     summary = stringResource(R.string.pref_wifilock_summary),
                     checked = uiState.wifilock,
                     onCheckedChange = onWifilockChange
+                )
+            }
+
+            item {
+                ListPreference(
+                    title = stringResource(R.string.pref_network_grace_period_title),
+                    summary = when (uiState.networkGracePeriod) {
+                        "60" -> stringResource(R.string.list_network_grace_period_1min)
+                        "300" -> stringResource(R.string.list_network_grace_period_5min)
+                        "900" -> stringResource(R.string.list_network_grace_period_15min)
+                        "3600" -> stringResource(R.string.list_network_grace_period_1hour)
+                        else -> uiState.networkGracePeriod
+                    },
+                    value = uiState.networkGracePeriod,
+                    entries = listOf(
+                        stringResource(R.string.list_network_grace_period_1min) to "60",
+                        stringResource(R.string.list_network_grace_period_5min) to "300",
+                        stringResource(R.string.list_network_grace_period_15min) to "900",
+                        stringResource(R.string.list_network_grace_period_1hour) to "3600"
+                    ),
+                    onValueChange = onNetworkGracePeriodChange
                 )
             }
 
@@ -1358,6 +1381,7 @@ private fun SettingsScreenPreview() {
             onConnPersistChange = {},
             onAllowAutomationIntentsChange = {},
             onWifilockChange = {},
+            onNetworkGracePeriodChange = {},
             onBackupkeysChange = {},
             onScrollbackChange = {},
             onAddCustomTerminalType = {},

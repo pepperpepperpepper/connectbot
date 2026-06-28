@@ -60,6 +60,11 @@ object PreferenceConstants {
 
     const val WIFI_LOCK: String = "wifilock"
 
+    /** How long (in seconds) to keep a session alive after the network drops
+     * before disconnecting. Stored as a string for use with a list preference. */
+    const val NETWORK_GRACE_PERIOD: String = "networkGracePeriod"
+    const val NETWORK_GRACE_PERIOD_DEFAULT: String = "300"
+
     const val BUMPY_ARROWS: String = "bumpyarrows"
 
     const val SORT_BY_COLOR: String = "sortByColor"

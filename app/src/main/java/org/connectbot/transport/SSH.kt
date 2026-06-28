@@ -19,6 +19,13 @@ package org.connectbot.transport
 
 import android.content.Context
 import android.net.Uri
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import timber.log.Timber
 import com.trilead.ssh2.AuthAgentCallback
 import com.trilead.ssh2.ChannelCondition
@@ -107,6 +114,11 @@ class SSH : AbsTransport, ConnectionMonitor, InteractiveCallback, AuthAgentCallb
 
     private var useAuthAgent = HostConstants.AUTHAGENT_NO
     private var agentLockPassphrase: String? = null
+
+    // Periodically sends SSH_MSG_IGNORE packets to keep the connection alive and
+    // reset the server's idle timer, preventing foreground idle disconnects.
+    private val keepAliveScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var keepAliveJob: Job? = null
 
     constructor() : super()
 
@@ -545,6 +557,8 @@ class SSH : AbsTransport, ConnectionMonitor, InteractiveCallback, AuthAgentCallb
     private fun finishConnection() {
         authenticated = true
 
+        startKeepAlive()
+
         for (portForward in portForwards) {
             try {
                 enablePortForward(portForward)
@@ -845,12 +859,40 @@ class SSH : AbsTransport, ConnectionMonitor, InteractiveCallback, AuthAgentCallb
         }
     }
 
+    /**
+     * Start a periodic keepalive that sends SSH_MSG_IGNORE packets so the
+     * connection (and any intervening NAT/firewall state) stays alive while the
+     * session is idle. The server's idle timer is also reset by this traffic.
+     */
+    private fun startKeepAlive() {
+        keepAliveJob?.cancel()
+        keepAliveJob = keepAliveScope.launch {
+            while (isActive) {
+                delay(KEEPALIVE_INTERVAL_MS)
+                val conn = connection ?: break
+                if (!connected) break
+                try {
+                    conn.sendIgnorePacket()
+                } catch (e: IOException) {
+                    // Transient failure (e.g. during a network grace period); keep
+                    // trying so keepalives resume once the connection recovers. A
+                    // permanently dead connection is torn down by the disconnect path,
+                    // which cancels this loop.
+                    Timber.d(e, "Keepalive packet failed; will retry")
+                }
+            }
+        }
+    }
+
     override fun close() {
         // Don't close during grace period - wait for network restore
         if (bridge?.isInGracePeriod() == true) {
             Timber.d("Deferring SSH close - bridge in network grace period")
             return
         }
+
+        keepAliveJob?.cancel()
+        keepAliveJob = null
 
         connected = false
 
@@ -1279,6 +1321,9 @@ class SSH : AbsTransport, ConnectionMonitor, InteractiveCallback, AuthAgentCallb
         private const val AUTH_KEYBOARDINTERACTIVE = "keyboard-interactive"
 
         private const val AUTH_TRIES = 20
+
+        /** Interval between SSH keepalive (SSH_MSG_IGNORE) packets, in milliseconds. */
+        private const val KEEPALIVE_INTERVAL_MS = 60_000L
 
         private val hostmask = Pattern.compile(
             "^(.+)@((?:[0-9a-z._-]+)|(?:\\[[a-f:0-9]+(?:%[-_.a-z0-9]+)?\\]))(?::(\\d+))?\$",
