@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Builds + publishes the legacy (blue UI) Google flavor to the local afteroid/F-Droid repo.
+# Builds + publishes the Google flavor to the local afteroid/F-Droid repo.
 #
 # Usage:
-#   scripts/publish_afteroid_google.sh <versionName> <versionCode>
+#   scripts/publish_afteroid_google.sh [<versionName> <versionCode>]
+#
+# If versionName/versionCode are omitted ("auto" mode), the appVersioning
+# Gradle plugin derives them from the current git tag and they are read back
+# from the built APK. This is the mode used by the release-tag pre-push hook.
 #
 # Env:
 #   FDROID_DIR (default: ~/fdroid)
@@ -12,19 +16,21 @@ set -euo pipefail
 #   AFTEROID_SYNC=1 to also sync to S3 + invalidate CloudFront
 #
 # Notes:
-#   - This script is meant to be run from the legacy v1.9.13-era codebase checkout.
+#   - This fork ships the Compose build's Google flavor from this checkout.
 #   - It refuses to publish the oss flavor (versionName suffix "-oss").
 
-VERSION_NAME="${1:?Usage: scripts/publish_afteroid_google.sh <versionName> <versionCode>}"
-VERSION_CODE="${2:?Usage: scripts/publish_afteroid_google.sh <versionName> <versionCode>}"
+VERSION_NAME="${1:-}"
+VERSION_CODE="${2:-}"
 
 FDROID_DIR="${FDROID_DIR:-${HOME}/fdroid}"
 APPID="${FDROID_APPID:-org.connectbot}"
 
-if [[ ! -f "app/src/main/java/org/connectbot/ConsoleActivity.java" ]]; then
-  echo "Error: this does not look like the legacy (blue UI) ConnectBot checkout." >&2
-  echo "Expected to find: app/src/main/java/org/connectbot/ConsoleActivity.java" >&2
-  echo "Use: ~/connectbot-release (symlink to the legacy checkout) for publishing." >&2
+if [[ ! -f "settings.gradle.kts" || ! -f "app/build.gradle.kts" ]]; then
+  echo "Error: run this from the root of the ConnectBot checkout." >&2
+  exit 2
+fi
+if ! grep -q 'applicationId = "org.connectbot"' app/build.gradle.kts; then
+  echo "Error: app/build.gradle.kts does not declare applicationId org.connectbot." >&2
   exit 2
 fi
 
@@ -43,10 +49,25 @@ if ! command -v fdroid >/dev/null 2>&1; then
   exit 2
 fi
 
-echo "Building googleRelease (${VERSION_NAME}, ${VERSION_CODE})…"
-./gradlew --no-daemon :app:assembleGoogleRelease \
-  -PforceVersionName="${VERSION_NAME}" \
-  -PforceVersionCode="${VERSION_CODE}"
+# Either both version args are given (explicit mode) or neither (auto mode,
+# where the appVersioning plugin derives the version from the current git tag).
+AUTO_VERSION=0
+if [[ -z "${VERSION_NAME}" && -z "${VERSION_CODE}" ]]; then
+  AUTO_VERSION=1
+elif [[ -z "${VERSION_NAME}" || -z "${VERSION_CODE}" ]]; then
+  echo "Error: provide both <versionName> and <versionCode>, or neither (auto mode)." >&2
+  exit 2
+fi
+
+if [[ "${AUTO_VERSION}" == "1" ]]; then
+  echo "Building googleRelease (auto version from git tag)…"
+  ./gradlew --no-daemon :app:assembleGoogleRelease
+else
+  echo "Building googleRelease (${VERSION_NAME}, ${VERSION_CODE})…"
+  ./gradlew --no-daemon :app:assembleGoogleRelease \
+    -PforceVersionName="${VERSION_NAME}" \
+    -PforceVersionCode="${VERSION_CODE}"
+fi
 
 APK_PATH="app/build/outputs/apk/google/release/app-google-release-unsigned.apk"
 if [[ ! -f "${APK_PATH}" ]]; then
@@ -57,6 +78,18 @@ fi
 BADGING="$(aapt dump badging "${APK_PATH}")"
 BADGING="${BADGING%%$'\n'*}"
 echo "${BADGING}"
+
+# In auto mode, read the plugin-generated version back from the built APK so it
+# stays the single source of truth for staging, metadata, and fdroid publish.
+if [[ "${AUTO_VERSION}" == "1" ]]; then
+  VERSION_CODE="$(sed -n "s/.*versionCode='\([0-9]*\)'.*/\1/p" <<<"${BADGING}")"
+  VERSION_NAME="$(sed -n "s/.*versionName='\([^']*\)'.*/\1/p" <<<"${BADGING}")"
+  if [[ -z "${VERSION_CODE}" || -z "${VERSION_NAME}" ]]; then
+    echo "Error: could not read versionCode/versionName from built APK." >&2
+    exit 1
+  fi
+  echo "Resolved version from APK: ${VERSION_NAME} (${VERSION_CODE})"
+fi
 
 if [[ "${BADGING}" != package:\ name=\'${APPID}\'* ]]; then
   echo "Error: APK packageName mismatch; expected ${APPID}" >&2
