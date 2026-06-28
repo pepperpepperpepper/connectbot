@@ -2,6 +2,12 @@
 
 # ConnectBot
 
+> **Note:** This repository is a **hard fork** of
+> [connectbot/connectbot](https://github.com/connectbot/connectbot),
+> maintained independently and not affiliated with the upstream project.
+> Changes are developed and shipped from here; we do not submit pull
+> requests upstream.
+
 ConnectBot is a [Secure Shell](https://en.wikipedia.org/wiki/Secure_Shell)
 client for Android that lets you connect to remote servers over a
 cryptographically secure link.
