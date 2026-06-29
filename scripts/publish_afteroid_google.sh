@@ -13,11 +13,18 @@ set -euo pipefail
 # Env:
 #   FDROID_DIR (default: ~/fdroid)
 #   FDROID_APPID (default: org.connectbot)
-#   AFTEROID_SYNC=1 to also sync to S3 + invalidate CloudFront
+#   AFTEROID_SYNC=1 to also sync to S3 + invalidate CloudFront after publishing
+#   SYNC_ONLY=1     to ONLY sync the existing repo to S3 + CloudFront (no build,
+#                   no re-publish). Use this for the manual go-live step after
+#                   the pre-push hook has already published locally. No version
+#                   args needed. Implies the sync; AFTEROID_SYNC is not required.
 #
 # Notes:
 #   - This fork ships the Compose build's Google flavor from this checkout.
 #   - It refuses to publish the oss flavor (versionName suffix "-oss").
+#   - Re-running the full build+publish for an already-published versionCode
+#     fails (fdroid refuses an APK present in both unsigned/ and repo/). Use
+#     SYNC_ONLY=1 to push an already-published version live.
 
 VERSION_NAME="${1:-}"
 VERSION_CODE="${2:-}"
@@ -25,18 +32,40 @@ VERSION_CODE="${2:-}"
 FDROID_DIR="${FDROID_DIR:-${HOME}/fdroid}"
 APPID="${FDROID_APPID:-org.connectbot}"
 
-if [[ ! -f "settings.gradle.kts" || ! -f "app/build.gradle.kts" ]]; then
-  echo "Error: run this from the root of the ConnectBot checkout." >&2
-  exit 2
-fi
-if ! grep -q 'applicationId = "org.connectbot"' app/build.gradle.kts; then
-  echo "Error: app/build.gradle.kts does not declare applicationId org.connectbot." >&2
-  exit 2
-fi
+# Sync the already-built local repo to S3 and invalidate CloudFront. Used both
+# by the optional post-publish sync (AFTEROID_SYNC=1) and the standalone
+# SYNC_ONLY=1 go-live step.
+do_sync() {
+  if ! command -v aws >/dev/null 2>&1; then
+    echo "Error: aws is required for syncing (not found on PATH)." >&2
+    exit 2
+  fi
+
+  : "${FDROID_AWS_BUCKET:?Missing FDROID_AWS_BUCKET for sync}"
+  : "${FDROID_AWS_CF_DISTRIBUTION_ID:?Missing FDROID_AWS_CF_DISTRIBUTION_ID for sync}"
+
+  echo "Syncing repo/archive to S3…"
+  aws s3 sync "${FDROID_DIR}/repo" "s3://${FDROID_AWS_BUCKET}/repo" --only-show-errors
+  aws s3 sync "${FDROID_DIR}/archive" "s3://${FDROID_AWS_BUCKET}/archive" --only-show-errors
+
+  echo "Invalidating CloudFront cache…"
+  aws cloudfront create-invalidation \
+    --distribution-id "${FDROID_AWS_CF_DISTRIBUTION_ID}" \
+    --paths "/repo/*" "/archive/*"
+}
 
 if [[ ! -d "${FDROID_DIR}" ]]; then
   echo "Error: FDROID_DIR does not exist: ${FDROID_DIR}" >&2
   exit 2
+fi
+
+# SYNC_ONLY: push the existing local repo live without rebuilding or
+# re-publishing. Skips all build/publish prerequisites and version handling.
+if [[ "${SYNC_ONLY:-}" == "1" ]]; then
+  echo "SYNC_ONLY=1 → syncing existing repo to S3 + CloudFront (no build/publish)…"
+  do_sync
+  echo "Sync complete ✅"
+  exit 0
 fi
 
 if ! command -v aapt >/dev/null 2>&1; then
@@ -144,22 +173,7 @@ echo "Signing + indexing via fdroid…"
 (cd "${FDROID_DIR}" && fdroid publish "${APPID}:${VERSION_CODE}" && fdroid update)
 
 if [[ "${AFTEROID_SYNC:-}" == "1" ]]; then
-  if ! command -v aws >/dev/null 2>&1; then
-    echo "Error: AFTEROID_SYNC=1 but aws is not found on PATH." >&2
-    exit 2
-  fi
-
-  : "${FDROID_AWS_BUCKET:?Missing FDROID_AWS_BUCKET for AFTEROID_SYNC=1}"
-  : "${FDROID_AWS_CF_DISTRIBUTION_ID:?Missing FDROID_AWS_CF_DISTRIBUTION_ID for AFTEROID_SYNC=1}"
-
-  echo "Syncing repo/archive to S3…"
-  aws s3 sync "${FDROID_DIR}/repo" "s3://${FDROID_AWS_BUCKET}/repo" --only-show-errors
-  aws s3 sync "${FDROID_DIR}/archive" "s3://${FDROID_AWS_BUCKET}/archive" --only-show-errors
-
-  echo "Invalidating CloudFront cache…"
-  aws cloudfront create-invalidation \
-    --distribution-id "${FDROID_AWS_CF_DISTRIBUTION_ID}" \
-    --paths "/repo/*" "/archive/*"
+  do_sync
 fi
 
 echo "Publish complete ✅"
